@@ -1,0 +1,22 @@
+{
+  "name": "fgui-publish",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "rollup -c rollup.config.js --watch",
+    "test": "node dist/index.js"
+  },
+  "keywords": [],
+  "author": "krapnik",
+  "license": "ISC",
+  "dependencies": {
+    "fast-xml-parser": "^3.21.1",
+    "rollup": "^2.59.0"
+  },
+  "devDependencies": {
+    "@types/node": "^16.11.6",
+    "rollup-plugin-typescript2": "^0.30.0",
+    "typescript": "^4.4.4"
+  }
+}
