@@ -14,7 +14,7 @@ import FPackageItem from "./FPackageItem";
 import FPackageItemType from "./FPackageItemType";
 import FProject from "./FProject";
 import fs from "fs";
-import { parseStringPromise } from "xml2js";
+// import { parseStringPromise } from "xml2js";
 
 
 export default class FPackage implements IUIPackage {
@@ -230,10 +230,10 @@ export default class FPackage implements IUIPackage {
         // try {
         // descFile = new File(this._basePath + "/package.xml");
         // xd = UtilsFile.loadXData(descFile);
-        let descFile = fs.readFileSync(this._basePath + "assets/" + this.name + "/package.xml").toString();
+        // let descFile = fs.readFileSync(this._basePath + "assets/" + this.name + "/package.xml").toString();
 
-        let data = await parseStringPromise(descFile);
-        let xd = data.packageDescription;
+        // let data = await parseStringPromise(descFile);
+        // let xd = data.packageDescription;
         // }
         // catch (err: Error) {
         //     _fatalError = true;
@@ -261,11 +261,11 @@ export default class FPackage implements IUIPackage {
         //     if (publishNode == null) {
         //         publishNode = XData.create("publish");
         //     }
-        let publishNode = xd["publish"];
-        if (publishNode == null) {
-            console.warn("publishNode is empty!")
-            // publishNode = XData.create("publish"); // todo
-        }
+        // let publishNode = xd["publish"];
+        // if (publishNode == null) {
+        //     console.warn("publishNode is empty!")
+        //     // publishNode = XData.create("publish"); // todo
+        // }
         //     step = "loadPublishSettings";
         // this.loadPublishSettings(publishNode);
 
@@ -273,12 +273,12 @@ export default class FPackage implements IUIPackage {
         // this.parseItems(data);
         //     step = "listAllFolders";
         //     this.listAllFolders(this._rootItem, new File(this._basePath));
-        let resources = xd["resources"];
-        debugger;
-        if (resources) {
-            //         step = "parseItems";
-            this.parseItems(resources.getChildren(), "");
-        }
+        // let resources = xd["resources"];
+        // debugger;
+        // if (resources) {
+        //     //         step = "parseItems";
+        //     this.parseItems(resources.getChildren(), "");
+        // }
         //     xd.dispose();
         //     allBranches = this._project.allBranches;
         //     for (branch in allBranches) {

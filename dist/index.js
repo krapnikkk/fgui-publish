@@ -463,12 +463,6 @@ FObjectType.NAME_PREFIX = {
 };
 
 class FPackageItemType {
-    constructor() {
-    }
-    static getFileType(param1) {
-        var _loc3_ = "";
-        return _loc3_;
-    }
 }
 FPackageItemType.FOLDER = "folder";
 FPackageItemType.IMAGE = "image";
@@ -502,9 +496,9 @@ process.on('uncaughtException', function (e) {
     console.log(e);
 });
 const compress = false, basePath = "./UIProject/", projectName = "example", extName = ".fairy", packageName = "package.xml", assetsPath = "assets/", targetPath = "./output";
-const stringMap = {}, stringTable = [], xmlFileMap = {};
+const stringMap = {}, stringTable = [], xmlFileMap = {}, resourceMap = new Map;
 const dependentElements = ["image", "component", "movieclip"];
-let projectType = ProjectType.UNITY, pkgId = "", pkgName = "Bag", version = 2;
+let projectType = ProjectType.UNITY, pkgId = "", pkgName = "Bag", version = 2, spriteMap = new Map();
 const xmlOptions = {
     attributeNamePrefix: "",
     textNodeName: "#text",
@@ -525,8 +519,8 @@ const xmlOptions = {
     stopNodes: ["parse-me-as-string"],
     alwaysCreateTextNode: false
 };
-function getConfig() {
-    console.log("getConfig");
+function getProjectConfig() {
+    console.log("getProjectConfig");
     let xml = fs__default["default"].readFileSync(`${basePath}${projectName}${extName}`).toString();
     let data = fastXmlParser.parse(xml, xmlOptions).projectDescription;
     let { type } = data;
@@ -576,64 +570,6 @@ function getFileExtension(projectType) {
     }
     return fileExtension;
 }
-function startSegments(ba, segment, bool) {
-    ba.writeByte(segment);
-    ba.writeBoolean(bool);
-    let idx = 0;
-    while (idx < segment) {
-        if (bool) {
-            ba.writeShort(0);
-        }
-        else {
-            ba.writeInt(0);
-        }
-        idx++;
-    }
-}
-function writeSegmentPos(ba, pos) {
-    let position = ba.position;
-    ba.position = 1;
-    let _loc4_ = ba.readBoolean();
-    ba.position = 2 + pos * (_loc4_ ? 2 : 4);
-    if (_loc4_) {
-        ba.writeShort(position);
-    }
-    else {
-        ba.writeInt(position);
-    }
-    ba.position = position;
-}
-function writeString(ba, param2, param3 = false, param4 = true) {
-    let _loc5_;
-    if (param4) {
-        if (!param2) {
-            ba.writeShort(65534);
-            return;
-        }
-    }
-    else {
-        if (param2 == null) {
-            ba.writeShort(65534);
-            return;
-        }
-        if (param2.length == 0) {
-            ba.writeShort(65533);
-            return;
-        }
-    }
-    if (!param3) {
-        _loc5_ = stringMap[param2];
-        if (_loc5_ != undefined) {
-            ba.writeShort(Number(_loc5_));
-            return;
-        }
-    }
-    stringTable.push(param2);
-    if (!param3) {
-        stringMap[param2] = stringTable.length - 1;
-    }
-    ba.writeShort(stringTable.length - 1);
-}
 function getPackagesResource(resource) {
     let dependentMap = new Map();
     let resourceArr = [];
@@ -643,19 +579,28 @@ function getPackagesResource(resource) {
                 let item = value[i];
                 item.type = key;
                 resourceArr.push(item);
+                resourceMap.set(item.id, item);
                 if (key == "component") {
                     readXMLResource(item, dependentMap);
+                }
+                else if (key == "image") {
+                    spriteMap.set(item.id, item);
                 }
             }
         }
         else {
             value.type = key;
             resourceArr.push(value);
+            resourceMap.set(value.id, value);
             if (key == "component") {
                 readXMLResource(value, dependentMap);
             }
+            else if (key == "image") {
+                spriteMap.set(value.id, value);
+            }
         }
     }
+    console.log(spriteMap);
     return { dependentMap, resourceArr };
 }
 function readXMLResource(component, dependentMap) {
@@ -663,9 +608,10 @@ function readXMLResource(component, dependentMap) {
     let xml = fs__default["default"].readFileSync(`${basePath}${assetsPath}${pkgName}${path}${name}`).toString();
     let data = fastXmlParser.parse(xml, xmlOptions).component;
     xmlFileMap[id] = data;
+    Object.assign(resourceMap.get(id), data);
     let { displayList } = data;
+    console.log(data);
     for (let [key, value] of Object.entries(displayList)) {
-        console.log(value);
         if (dependentElements.includes(key)) {
             if (Array.isArray(value)) {
                 for (let j = 0; j < value.length; j++) {
@@ -683,42 +629,40 @@ function readXMLResource(component, dependentMap) {
                 }
             }
         }
-        else {
-            console.log(key);
-        }
     }
 }
-function writeDependent() {
-    let ba = new ByteArray();
-    startSegments(ba, 6, false);
-    writeSegmentPos(ba, 0);
+function encode(compress = false) {
+    let headByteArray = new ByteArray();
+    writeHead(headByteArray, { version, compress, pkgId, pkgName });
+    let bodyByteArray = new ByteArray();
+    startSegments(bodyByteArray, 6, false);
+    writeSegmentPos(bodyByteArray, 0);
     console.log("packageDescription");
     let xml = fs__default["default"].readFileSync(`${basePath}${assetsPath}${pkgName}/${packageName}`).toString();
     let packageDescription = fastXmlParser.parse(xml, xmlOptions).packageDescription;
     let resources = packageDescription.resources;
-    console.log("resources:", resources);
     let { dependentMap, resourceArr } = getPackagesResource(resources);
-    ba.writeShort(dependentMap.size);
+    bodyByteArray.writeShort(dependentMap.size);
     dependentMap.forEach(([id, name]) => {
-        writeString(ba, id);
-        writeString(ba, name);
+        writeString(bodyByteArray, id);
+        writeString(bodyByteArray, name);
     });
-    ba.writeShort(0);
-    writeSegmentPos(ba, 1);
-    ba.writeShort(resourceArr.length);
+    bodyByteArray.writeShort(0);
+    writeSegmentPos(bodyByteArray, 1);
+    bodyByteArray.writeShort(resourceArr.length);
+    debugger;
     resourceArr.forEach((element) => {
         let byteBuffer = writeResourceItem(element);
-        ba.writeInt(byteBuffer.length);
-        ba.writeBytes(byteBuffer);
+        bodyByteArray.writeInt(byteBuffer.length);
+        bodyByteArray.writeBytes(byteBuffer);
         byteBuffer.clear();
     });
-    writeSegmentPos(ba, 2);
+    writeSegmentPos(bodyByteArray, 2);
+    return headByteArray;
 }
 function publish() {
-    getConfig();
-    let ba = new ByteArray();
-    writeHead(ba, { version, compress, pkgId, pkgName });
-    writeDependent();
+    getProjectConfig();
+    let ba = encode();
     let fileExtension = getFileExtension(projectType);
     fs__default["default"].writeFileSync(`${targetPath}/${pkgName}.${fileExtension}`, ba.data);
 }
@@ -760,10 +704,9 @@ function writeResourceItem(resource) {
             ba.writeByte(8);
     }
     value = resource["id"];
-    console.log(value);
     writeString(ba, value);
-    writeString(ba, resource.name);
-    writeString(ba, resource.path);
+    writeString(ba, resource.name || "");
+    writeString(ba, resource.path || "");
     if (type == FPackageItemType.SOUND || type == FPackageItemType.SWF || type == FPackageItemType.ATLAS || type == FPackageItemType.MISC) {
         writeString(ba, resource.file);
     }
@@ -771,7 +714,7 @@ function writeResourceItem(resource) {
         writeString(ba, null);
     }
     ba.writeBoolean(Boolean(resource.exported));
-    _loc4_ = resource.size;
+    _loc4_ = resource.size || "";
     _loc5_ = _loc4_.split(",");
     ba.writeInt(parseInt(_loc5_[0]));
     ba.writeInt(parseInt(_loc5_[1]));
@@ -805,11 +748,14 @@ function writeResourceItem(resource) {
             ba.writeBoolean(Boolean(resource.smoothing));
             break;
         case FPackageItemType.MOVIECLIP:
+            ba.writeBoolean(Boolean(resource.smoothing));
+            _loc9_ = xmlFileMap[value];
+            ba.writeInt(0);
             break;
         case FPackageItemType.FONT:
             break;
         case FPackageItemType.COMPONENT:
-            _loc9_ = xmlFileMap[value + ".xml"];
+            _loc9_ = xmlFileMap[value];
             if (_loc9_) {
                 _loc10_ = _loc9_.extention;
                 if (_loc10_) {
@@ -872,5 +818,63 @@ function writeResourceItem(resource) {
         ba.writeByte(0);
     }
     return ba;
+}
+function startSegments(ba, segment, bool) {
+    ba.writeByte(segment);
+    ba.writeBoolean(bool);
+    let idx = 0;
+    while (idx < segment) {
+        if (bool) {
+            ba.writeShort(0);
+        }
+        else {
+            ba.writeInt(0);
+        }
+        idx++;
+    }
+}
+function writeSegmentPos(ba, pos) {
+    let position = ba.position;
+    ba.position = 1;
+    let _loc4_ = ba.readBoolean();
+    ba.position = 2 + pos * (_loc4_ ? 2 : 4);
+    if (_loc4_) {
+        ba.writeShort(position);
+    }
+    else {
+        ba.writeInt(position);
+    }
+    ba.position = position;
+}
+function writeString(ba, str, param3 = false, param4 = true) {
+    let value;
+    if (param4) {
+        if (!str) {
+            ba.writeShort(65534);
+            return;
+        }
+    }
+    else {
+        if (str == null) {
+            ba.writeShort(65534);
+            return;
+        }
+        if (str.length == 0) {
+            ba.writeShort(65533);
+            return;
+        }
+    }
+    if (!param3) {
+        value = stringMap[str];
+        if (value != undefined) {
+            ba.writeShort(Number(value));
+            return;
+        }
+    }
+    stringTable.push(str);
+    if (!param3) {
+        stringMap[str] = stringTable.length - 1;
+    }
+    ba.writeShort(stringTable.length - 1);
 }
 publish();

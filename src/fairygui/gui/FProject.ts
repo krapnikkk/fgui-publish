@@ -15,7 +15,7 @@ import FPackage from "./FPackage";
 import FPackageItem from "./FPackageItem";
 import fs from "fs";
 import path from "path";
-import { parseStringPromise } from "xml2js";
+// import { parseStringPromise } from "xml2js";
 
 
 export default class FProject implements IUIProject {
@@ -249,10 +249,10 @@ export default class FProject implements IUIProject {
     public async open() {
         // var xml: XData;
         // var arr: Array<string>;
-        let projectDescFile = fs.readFileSync(path.resolve(this._basePath + this.name + ".fairy")).toString(); // 读取.fairy文件信息
-        let xml = await parseStringPromise(projectDescFile);
-        xml = xml['projectDescription']['$'];
-        this._opened = true;
+        // let projectDescFile = fs.readFileSync(path.resolve(this._basePath + this.name + ".fairy")).toString(); // 读取.fairy文件信息
+        // let xml = await parseStringPromise(projectDescFile);
+        // xml = xml['projectDescription']['$'];
+        // this._opened = true;
         // var projectFolder: File = projectDescFile.parent;
         // projectFolder.canonicalize();
         // this._basePath = projectFolder.nativePath;
@@ -262,32 +262,32 @@ export default class FProject implements IUIProject {
         // catch (err: Error) {
         //     throw new Error(projectDescFile.name + " is corrupted, please check!");
         // }
-        this._id = xml["id"];
-        this._type = xml["type"];
-        if (!this._type) {
-            this._type = ProjectType.UNITY;
-        }
-        console.log(this._type);
-        // this._name = UtilsStr.getFileName(projectDescFile.name);
-        var str: string = xml["version"];
-        if (str) {
-            var arr = str.split(",");
-            if (arr.length == 1) {
-                this._versionCode = +(arr[0]) * 100;
-            }
-            else {
-                this._versionCode = +(arr[0]) * 100 + +(arr[1]);
-            }
-        } else {
-            this._versionCode = 200;
-        }
+        // this._id = xml["id"];
+        // this._type = xml["type"];
+        // if (!this._type) {
+        //     this._type = ProjectType.UNITY;
+        // }
+        // console.log(this._type);
+        // // this._name = UtilsStr.getFileName(projectDescFile.name);
+        // var str: string = xml["version"];
+        // if (str) {
+        //     var arr = str.split(",");
+        //     if (arr.length == 1) {
+        //         this._versionCode = +(arr[0]) * 100;
+        //     }
+        //     else {
+        //         this._versionCode = +(arr[0]) * 100 + +(arr[1]);
+        //     }
+        // } else {
+        //     this._versionCode = 200;
+        // }
         // var assetsFolder: File = projectFolder.resolvePath(FProject.ASSETS_PATH);
         // if (!assetsFolder.exists) {
         //     assetsFolder.createDirectory();
         // }
 
-        this._assetsPath = this._basePath + "assets/";
-        this._settingsPath = this._basePath + "settings/";
+        // this._assetsPath = this._basePath + "assets/";
+        // this._settingsPath = this._basePath + "settings/";
         // this._assetsPath = assetsFolder.nativePath;
         // this._objsPath = projectFolder.resolvePath(FProject.OBJS_PATH).nativePath;
         // this._settingsPath = projectFolder.resolvePath(FProject.SETTINGS_PATH).nativePath;

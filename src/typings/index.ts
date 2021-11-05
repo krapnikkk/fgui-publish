@@ -4,7 +4,6 @@ interface IBase {
 
 interface IPackageHeader {
     version: number;
-    compress: boolean;
     pkgId: string;
     pkgName: string;
 }
