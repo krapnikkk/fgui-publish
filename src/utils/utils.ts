@@ -19,3 +19,39 @@ export const convertFromHtmlColor = (color: string, alpha: boolean = false): num
     }
     return parseInt(color.substr(1), 16);
 }
+
+export const encodeHTML = (str: string) => {
+    return str.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&apos;/g, "'");
+}
+
+export const getAttributeBool = (data: { [key: string]: any }, key: string, defaultValue: boolean = false): boolean => {
+    var value: string = data[key];
+    if (value == null) {
+        return defaultValue;
+    }
+    return value == "true";
+}
+
+export const getAttributeInt = (data: { [key: string]: any }, key: string,defaultValue: number = 0): number => {
+    var value: string = data[key];
+    if (value == null) {
+        return defaultValue;
+    }
+    return parseInt(value);
+}
+
+export const getAttributeFloat = (data: { [key: string]: any }, key: string,defaultValue: number = 0): number => {
+    var value: string = data[key];
+    if (value == null) {
+        return defaultValue;
+    }
+    return parseFloat(value);
+} 
+
+export const getAttribute = (data: { [key: string]: any }, key: string,defaultValue: string = ""): string => {
+    var value: string = data[key];
+    if (value == null) {
+        return defaultValue;
+    }
+    return value;
+} 

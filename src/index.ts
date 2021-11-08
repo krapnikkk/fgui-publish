@@ -3,11 +3,12 @@ import fs from "fs";
 import { parse } from "fast-xml-parser";
 import ProjectType from "./fairygui/editor/api/ProjectType";
 import { type } from "os";
-import { convertFromHtmlColor, isH5 } from "./utils/utils";
+import { convertFromHtmlColor, encodeHTML, getAttribute, getAttributeBool, getAttributeFloat, getAttributeInt, isH5 } from "./utils/utils";
 import FObjectType from "./fairygui/editor/api/FObjectType";
 import { CurveType, EaseType, FButton, FGearBase, FPackageItemType } from "./constants";
 
 process.on('uncaughtException', function (e) {
+    debugger;
     console.log(e);
 });
 
@@ -23,7 +24,9 @@ const id: string = "id",
     hasBranch = false, // todo 
     branches = 0,
     targetPath = "./output"; // todo 从配置文件读取
-let controllerCnt = 0, controllerCache: { [key: string]: any } = {}, displayList: { [key: string]: any } = {};
+let controllerCnt = 0,
+    controllerCache: { [key: string]: any } = {},
+    displayList: { [key: string]: any } = {};
 const stringMap: { [key: string]: number } = {},
     stringTable: string[] = [],
     xmlFileMap: { [key: string]: IComponentFile } = {},
@@ -61,10 +64,11 @@ const dependentElements = ["image", "component", "movieclip"];
 let binaryFormat = false,
     projectType = ProjectType.UNITY,
     pkgId = "",
-    pkgName = "Bag",
+    pkgName = "Basics",
     version: number = 2,
     spriteMap: Map<string, IBaseResource> = new Map();
-
+let hitTestData = new ByteArray();
+let hitTestImages: Array<IHitTestImage> = [];
 const xmlOptions = {
     attributeNamePrefix: "",
     // attrNodeName: "attr", //default is 'false'
@@ -115,15 +119,13 @@ function getFileExtension(projectType: string): string {
     let fileExtension = "fui"; // todo 从配置中获取
     if (projectType == ProjectType.UNITY) {
         fileExtension = "bytes";
-    }
-    else if (projectType == ProjectType.COCOS2DX || projectType == ProjectType.VISION) {
+    } else if (projectType == ProjectType.COCOS2DX || projectType == ProjectType.VISION) {
         if (binaryFormat) {
             fileExtension = "fui";
         } else {
             fileExtension = "bytes";
         }
-    }
-    else if (projectType == ProjectType.CRY || projectType == ProjectType.MONOGAME || projectType == ProjectType.CORONA) {
+    } else if (projectType == ProjectType.CRY || projectType == ProjectType.MONOGAME || projectType == ProjectType.CORONA) {
         fileExtension = "fui";
     } else {
         if (!fileExtension) {
@@ -177,6 +179,7 @@ function getPackagesResource(resource: IResource): IPackageResource {
 // 根据资源列表读取跨包资源情况
 function readXMLResource(component: IComponentResource, dependentMap: Map<string, string>) {
     let { name, path, id } = component;
+    name = encodeHTML(name);
     let xml = fs.readFileSync(`${basePath}${assetsPath}${pkgName}${path}${name}`).toString();
     let data = parse(xml, xmlOptions).component as IComponentFile;
     xmlFileMap[id] = data;
@@ -216,17 +219,17 @@ function getSpritesInfo() {
 
 function encode(compress: boolean = false): ByteArray {
     // 处理图集资源
-    let headByteArray = new ByteArray();
-    writeHead(headByteArray, { version, pkgId, pkgName });
-
     let ba = new ByteArray();
+    let ba2 = new ByteArray();
     let i = 0;
     let itemId: string = "";
     var atlasId: string = "";
     var binIndex: number = 0;
+    let str: string = "";
     var pos: number = 0;
     var len: number = 0;
-    let longStrings:ByteArray;
+    let longStrings: ByteArray;
+    let cntPos: number = 0;
 
     startSegments(ba, 6, false);
     writeSegmentPos(ba, 0);
@@ -267,10 +270,9 @@ function encode(compress: boolean = false): ByteArray {
     ba.writeShort(0);
 
     writeSegmentPos(ba, 1);
-    // ba.writeShort(resourceArr.length); 
     ba.writeShort(resourceArr.length);
-    // console.log(resourceArr);
- 
+    console.log(resourceArr);
+
     resourceArr.forEach((element) => {
         let byteBuffer = writeResourceItem(element); // 资源中的
         ba.writeInt(byteBuffer.length);
@@ -285,119 +287,115 @@ function encode(compress: boolean = false): ByteArray {
     ba.writeShort(cnt);
     i = 0;
     let arr = [];
-    let ba2 = new ByteArray();
+
     while (i < cnt) {
-        arr = spriteMap[i];
-        ba2 = new ByteArray();
-        itemId = arr[0];
-        writeString(ba2, itemId);
-        binIndex = parseInt(arr[1]);
-        if (binIndex >= 0) {
-            atlasId = "atlas" + binIndex;
-        }
-        else {
-            pos = itemId.indexOf("_");
-            if (pos == -1) {
-                atlasId = "atlas_" + itemId;
-            }
-            else {
-                atlasId = "atlas_" + itemId.substring(0, pos);
-            }
-        }
-        writeString(ba2, atlasId);
-        ba2.writeInt(arr[2]);
-        ba2.writeInt(arr[3]);
-        ba2.writeInt(arr[4]);
-        ba2.writeInt(arr[5]);
-        ba2.writeBoolean(arr[6]);
-        if (arr[7] != undefined && (arr[7] != 0 || arr[8] != 0 || arr[9] != arr[4] || arr[10] != arr[5])) {
-            ba2.writeBoolean(true);
-            ba2.writeInt(arr[7]);
-            ba2.writeInt(arr[8]);
-            ba2.writeInt(arr[9]);
-            ba2.writeInt(arr[10]);
-        }
-        else {
-            ba2.writeBoolean(false);
-        }
-        ba.writeShort(ba2.length);
-        ba.writeBytes(ba2);
-        ba2.clear();
-        i++;
+        // arr = spriteMap[i];
+        // ba2 = new ByteArray();
+        // itemId = arr[0];
+        // writeString(ba2, itemId);
+        // binIndex = parseInt(arr[1]);
+        // if (binIndex >= 0) {
+        //     atlasId = "atlas" + binIndex;
+        // }
+        // else {
+        //     pos = itemId.indexOf("_");
+        //     if (pos == -1) {
+        //         atlasId = "atlas_" + itemId;
+        //     }
+        //     else {
+        //         atlasId = "atlas_" + itemId.substring(0, pos);
+        //     }
+        // }
+        // writeString(ba2, atlasId);
+        // ba2.writeInt(arr[2]);
+        // ba2.writeInt(arr[3]);
+        // ba2.writeInt(arr[4]);
+        // ba2.writeInt(arr[5]);
+        // ba2.writeBoolean(arr[6]);
+        // if (arr[7] != undefined && (arr[7] != 0 || arr[8] != 0 || arr[9] != arr[4] || arr[10] != arr[5])) {
+        //     ba2.writeBoolean(true);
+        //     ba2.writeInt(arr[7]);
+        //     ba2.writeInt(arr[8]);
+        //     ba2.writeInt(arr[9]);
+        //     ba2.writeInt(arr[10]);
+        // }
+        // else {
+        //     ba2.writeBoolean(false);
+        // }
+        // ba.writeShort(ba2.length);
+        // ba.writeBytes(ba2);
+        // ba2.clear();
+        // i++;
     }
 
     // hitTestData
-    if(publishData.hitTestData.length > 0)
-         {
-            writeSegmentPos(ba,3);
-            ba2 = publishData.hitTestData;
-            ba2.position = 0;
-            cntPos = ba.position;
-            ba.writeShort(0);
-            cnt = 0;
-            while(ba2.bytesAvailable)
-            {
-               str = ba2.readUTF();
-               pos = ba2.position;
-               ba2.position = ba2.position + 9;
-               len = ba2.readInt();
-               ba.writeInt(len + 15);
-               writeString(ba,str);
-               ba.writeBytes(ba2,pos,len + 13);
-               ba2.position = pos + 13 + len;
-               cnt++;
-            }
-            writeCount(ba,cntPos,cnt);
-         }
+    if (hitTestData.length > 0) {
+        writeSegmentPos(ba, 3);
+        ba2 = hitTestData; // writeHitTestImages
+        ba2.position = 0;
+        cntPos = ba.position;
+        ba.writeShort(0);
+        cnt = 0;
+        while (ba2.bytesAvailable) {
+            str = ba2.readUTF();
+            pos = ba2.position;
+            ba2.position = ba2.position + 9;
+            len = ba2.readInt();
+            ba.writeInt(len + 15);
+            writeString(ba, str);
+            ba.writeBytes(ba2, pos, len + 13);
+            ba2.position = pos + 13 + len;
+            cnt++;
+        }
+        writeCount(ba, cntPos, cnt);
+    }
 
-         writeSegmentPos(ba,4);
-         var longStringsCnt:int = 0;
-         cnt = stringTable.length;
-         ba.writeInt(cnt);
-         i = 0;
-         while(i < cnt)
-         {
-            try
-            {
-               ba.writeUTF(stringTable[i]);
-            }
-            catch(err:RangeError)
-            {
-               ba.writeShort(0);
-               if(longStrings == null)
-               {
-                  longStrings = new ByteArray();
-               }
-               longStrings.writeShort(i);
-               pos = longStrings.position;
-               longStrings.writeInt(0);
-            //    longStrings.writeUTFBytes(§_-FV§[i]); // todo what's this?
-               longStrings.writeUTFBytes(stringTable[i]); // todo what's this?
-               len = longStrings.position - pos - 4;
-               longStrings.position = pos;
-               longStrings.writeInt(len);
-               longStrings.position = longStrings.length;
-               longStringsCnt++;
-            }
-            i++;
-         }
-         if(longStringsCnt > 0)
-         {
-            writeSegmentPos(ba,5);
-            ba.writeInt(longStringsCnt);
-            ba.writeBytes(longStrings);
-            longStrings.clear();
-         }
-         ba2 = ba;
-         if(compress)
-         {
-            // ba2.deflate();
-         }
-         headByteArray.writeBytes(ba2);
-         ba2.clear();
-         
+    writeSegmentPos(ba, 4);
+    var longStringsCnt: number = 0;
+    cnt = stringTable.length;
+    ba.writeInt(cnt);
+    i = 0;
+    while (i < cnt) {
+        // try
+        // {
+        ba.writeUTF(stringTable[i]);
+        // }
+        // catch(err:RangeError)
+        // {
+        ba.writeShort(0);
+        if (longStrings == null) {
+            longStrings = new ByteArray();
+        }
+        longStrings.writeShort(i);
+        pos = longStrings.position;
+        longStrings.writeInt(0);
+        //    longStrings.writeUTFBytes(§_-FV§[i]); // todo what's this?
+        longStrings.writeUTFBytes(stringTable[i]); // todo what's this?
+        len = longStrings.position - pos - 4;
+        longStrings.position = pos;
+        longStrings.writeInt(len);
+        longStrings.position = longStrings.length;
+        longStringsCnt++;
+        // }
+        i++;
+    }
+    if (longStringsCnt > 0) {
+        writeSegmentPos(ba, 5);
+        ba.writeInt(longStringsCnt);
+        ba.writeBytes(longStrings);
+        longStrings.clear();
+    }
+    ba2 = ba;
 
-    return headByteArray;
+    if (compress) {
+        // ba2.deflate();
+    }
+    ba = new ByteArray();
+    writeHead(ba, { version, pkgId, pkgName });
+    ba.writeBytes(ba2);
+    ba2.clear();
+
+    return ba;
 }
 
 function publish() {
@@ -407,7 +405,7 @@ function publish() {
 
     let fileExtension = getFileExtension(projectType);
 
-    fs.writeFileSync(`${targetPath}/${pkgName}.${fileExtension}`, ba.data)
+    fs.writeFileSync(`${targetPath}/${pkgName}.${fileExtension}`, ba.data);
 }
 
 function writeResourceItem(resource: ResourceType): ByteArray {
@@ -416,7 +414,7 @@ function writeResourceItem(resource: ResourceType): ByteArray {
     let _loc5_: Array<string> = [];
     let _loc6_: number = 0;
     let value: string = "";
-    let _loc9_: any = null;
+    let _loc9_: IComponentFile = null;
     let _loc10_: string = "";
     let ba: ByteArray = new ByteArray();
     let type: string = resource.type;
@@ -454,8 +452,7 @@ function writeResourceItem(resource: ResourceType): ByteArray {
     writeString(ba, resource.path || "");
     if (type == FPackageItemType.SOUND || type == FPackageItemType.SWF || type == FPackageItemType.ATLAS || type == FPackageItemType.MISC) {
         writeString(ba, resource.file);
-    }
-    else {
+    } else {
         writeString(ba, null);
     }
     ba.writeBoolean(Boolean(resource.exported));
@@ -520,7 +517,6 @@ function writeResourceItem(resource: ResourceType): ByteArray {
             break;
         case FPackageItemType.COMPONENT:
             _loc9_ = xmlFileMap[value];
-
             if (_loc9_) {
                 _loc10_ = _loc9_.extention;
                 if (_loc10_) {
@@ -550,10 +546,10 @@ function writeResourceItem(resource: ResourceType): ByteArray {
                 else {
                     ba.writeByte(0);
                 }
-                // _loc3_ = writeGObjectData(value, any.attach(_loc9_));
-                // ba.writeInt(_loc3_.length);
-                // ba.writeBytes(_loc3_);
-                // _loc3_.clear();
+                _loc3_ = writeGObjectData(value, _loc9_);
+                ba.writeInt(_loc3_.length);
+                ba.writeBytes(_loc3_);
+                _loc3_.clear();
             }
             else {
                 ba.writeByte(0);
@@ -573,8 +569,7 @@ function writeResourceItem(resource: ResourceType): ByteArray {
             writeString(ba, _loc5_[_loc6_]);
             _loc6_++;
         }
-    }
-    else {
+    } else {
         ba.writeByte(0);
     }
 
@@ -594,467 +589,497 @@ function writeResourceItem(resource: ResourceType): ByteArray {
     return ba;
 }
 
-function writeGObjectData(param1: string, param2: any): ByteArray {
-    var _loc4_: string = null;
-    var _loc5_: Array<any> = null;
-    var _loc6_: number = 0;
-    var _loc7_: number = 0;
-    var _loc8_: Array<any> = null;
+function writeGObjectData(value: string, xml: IComponentFile): ByteArray {
+    var str: string = null;
+    var strArr: Array<string> = null;
+    var idx: number = 0;
+    var childrenLen: number = 0;
+    var children: Array<IBaseElement> = null;
     var _loc9_: any = null;
-    var _loc10_: ByteArray = null;
-    var _loc11_: number = 0;
-    var _loc15_: any = null;
-    var _loc3_: ByteArray = new ByteArray();
+    var tempByteArray: ByteArray = null;
+    var position: number = 0;
+    var child: any = null;
+    var ba: ByteArray = new ByteArray();
     controllerCache = {};
     controllerCnt = 0;
     displayList = {};
-    _loc9_ = param2.getChild("displayList");
+    _loc9_ = xml.displayList;
     if (_loc9_ != null) {
-        _loc8_ = _loc9_.getChildren();
-        _loc7_ = _loc8_.length;
-        _loc6_ = 0;
-        while (_loc6_ < _loc7_) {
-            displayList[_loc8_[_loc6_].getAttribute("id")] = _loc6_;
-            _loc6_++;
+        children = getChildren(_loc9_);
+        childrenLen = children.length;
+        idx = 0;
+        while (idx < childrenLen) {
+            displayList[children[idx].id] = idx;
+            idx++;
         }
     }
-    startSegments(_loc3_, 8, false);
-    writeSegmentPos(_loc3_, 0);
-    _loc4_ = param2.getAttribute("size", "");
-    _loc5_ = _loc4_.split(",");
-    _loc3_.writeInt(parseInt(_loc5_[0]));
-    _loc3_.writeInt(parseInt(_loc5_[1]));
-    _loc4_ = param2.getAttribute("restrictSize");
-    if (_loc4_) {
-        _loc5_ = _loc4_.split(",");
-        _loc3_.writeBoolean(true);
-        _loc3_.writeInt(parseInt(_loc5_[0]));
-        _loc3_.writeInt(parseInt(_loc5_[1]));
-        _loc3_.writeInt(parseInt(_loc5_[2]));
-        _loc3_.writeInt(parseInt(_loc5_[3]));
+    startSegments(ba, 8, false);
+    writeSegmentPos(ba, 0);
+    str = xml.size || "";
+    strArr = str.split(",");
+    ba.writeInt(parseInt(strArr[0]));
+    ba.writeInt(parseInt(strArr[1]));
+    str = xml.restrictSize; // 最小&最大尺寸
+    if (str) {
+        strArr = str.split(",");
+        ba.writeBoolean(true);
+        ba.writeInt(parseInt(strArr[0]));
+        ba.writeInt(parseInt(strArr[1]));
+        ba.writeInt(parseInt(strArr[2]));
+        ba.writeInt(parseInt(strArr[3]));
+    } else {
+        ba.writeBoolean(false);
     }
-    else {
-        _loc3_.writeBoolean(false);
+    str = xml.pivot;
+    if (str) {
+        strArr = str.split(",");
+        ba.writeBoolean(true);
+        ba.writeFloat(parseFloat(strArr[0]));
+        ba.writeFloat(parseFloat(strArr[1]));
+        ba.writeBoolean(xml.anchor == "true");
+    } else {
+        ba.writeBoolean(false);
     }
-    _loc4_ = param2.getAttribute("pivot");
-    if (_loc4_) {
-        _loc5_ = _loc4_.split(",");
-        _loc3_.writeBoolean(true);
-        _loc3_.writeFloat(parseFloat(_loc5_[0]));
-        _loc3_.writeFloat(parseFloat(_loc5_[1]));
-        _loc3_.writeBoolean(param2.getAttributeBool("anchor"));
-    }
-    else {
-        _loc3_.writeBoolean(false);
-    }
-    _loc4_ = param2.getAttribute("margin");
-    if (_loc4_) {
-        _loc5_ = _loc4_.split(",");
-        _loc3_.writeBoolean(true);
-        _loc3_.writeInt(parseInt(_loc5_[0]));
-        _loc3_.writeInt(parseInt(_loc5_[1]));
-        _loc3_.writeInt(parseInt(_loc5_[2]));
-        _loc3_.writeInt(parseInt(_loc5_[3]));
-    }
-    else {
-        _loc3_.writeBoolean(false);
+    str = xml.margin;
+    if (str) {
+        strArr = str.split(",");
+        ba.writeBoolean(true);
+        ba.writeInt(parseInt(strArr[0]));
+        ba.writeInt(parseInt(strArr[1]));
+        ba.writeInt(parseInt(strArr[2]));
+        ba.writeInt(parseInt(strArr[3]));
+    } else {
+        ba.writeBoolean(false);
     }
     var _loc12_: Boolean = false;
-    _loc4_ = param2.getAttribute("overflow");
-    if (_loc4_ == "hidden") {
-        _loc3_.writeByte(1);
-    }
-    else if (_loc4_ == "scroll") {
-        _loc3_.writeByte(2);
+    str = xml.overflow;
+    if (str == "hidden") {
+        ba.writeByte(1);
+    } else if (str == "scroll") {
+        ba.writeByte(2);
         _loc12_ = true;
+    } else {
+        ba.writeByte(0);
     }
-    else {
-        _loc3_.writeByte(0);
+    str = xml.clipSoftness;
+    if (str) {
+        strArr = str.split(",");
+        ba.writeBoolean(true);
+        ba.writeInt(parseInt(strArr[0]));
+        ba.writeInt(parseInt(strArr[1]));
+    } else {
+        ba.writeBoolean(false);
     }
-    _loc4_ = param2.getAttribute("clipSoftness");
-    if (_loc4_) {
-        _loc5_ = _loc4_.split(",");
-        _loc3_.writeBoolean(true);
-        _loc3_.writeInt(parseInt(_loc5_[0]));
-        _loc3_.writeInt(parseInt(_loc5_[1]));
-    }
-    else {
-        _loc3_.writeBoolean(false);
-    }
-    writeSegmentPos(_loc3_, 1);
-    _loc7_ = 0;
-    _loc11_ = _loc3_.position;
-    _loc3_.writeShort(0);
-    var _loc13_: any = param2.getEnumerator("controller");
-    while (_loc13_.moveNext()) {
-        _loc10_ = writeControllerData(_loc13_.current);
-        _loc3_.writeShort(_loc10_.length);
-        _loc3_.writeBytes(_loc10_);
-        _loc10_.clear();
-        _loc7_++;
-    }
-    writeCount(_loc3_, _loc11_, _loc7_);
-    writeSegmentPos(_loc3_, 2);
-    if (_loc9_ != null) {
-        _loc8_ = _loc9_.getChildren();
-        _loc7_ = _loc8_.length;
-        _loc3_.writeShort(_loc7_);
-        _loc6_ = 0;
-        while (_loc6_ < _loc7_) {
-            _loc10_ = addComponent(_loc8_[_loc6_]);
-            _loc3_.writeShort(_loc10_.length);
-            _loc3_.writeBytes(_loc10_);
-            _loc10_.clear();
-            _loc6_++;
+    writeSegmentPos(ba, 1);
+    childrenLen = 0;
+    position = ba.position;
+    ba.writeShort(0);
+    var controllers: IController | IController[] = xml.controller;
+    if (controllers) {
+        let controllerIdx = 0, controllerTotal = 0;
+        if (Array.isArray(controllers)) {
+            for (let controller of controllers) {
+                controllerIdx = 0;
+                controllerTotal = controller.pages.split(",").length / 2;
+                while (controllerIdx < controllerTotal) {
+                    tempByteArray = writeControllerData(controller);
+                    ba.writeShort(tempByteArray.length);
+                    ba.writeBytes(tempByteArray);
+                    tempByteArray.clear();
+                    controllerIdx++;
+                    childrenLen++;
+                }
+            }
+        } else {
+            controllerIdx = 0;
+            controllerTotal = controllers.pages.split(",").length / 2;
+            while (controllerIdx < controllerTotal) {
+                tempByteArray = writeControllerData(controllers);
+                ba.writeShort(tempByteArray.length);
+                ba.writeBytes(tempByteArray);
+                tempByteArray.clear();
+                controllerIdx++;
+                childrenLen++;
+            }
         }
     }
-    else {
-        _loc3_.writeShort(0);
+    writeCount(ba, position, childrenLen);
+    writeSegmentPos(ba, 2);
+    if (_loc9_ != null) {
+        children = getChildren(_loc9_);
+        childrenLen = children.length;
+        ba.writeShort(childrenLen);
+        idx = 0;
+        while (idx < childrenLen) {
+            tempByteArray = addComponent(children[idx]);
+            ba.writeShort(tempByteArray.length);
+            ba.writeBytes(tempByteArray);
+            tempByteArray.clear();
+            idx++;
+        }
+    } else {
+        ba.writeShort(0);
     }
-    writeSegmentPos(_loc3_, 3);
-    writeRelation(param2, _loc3_, true);
-    writeSegmentPos(_loc3_, 4);
-    writeString(_loc3_, param2.getAttribute("customData"), true);
-    _loc3_.writeBoolean(param2.getAttributeBool("opaque", true));
-    _loc4_ = param2.getAttribute("mask");
-    if (displayList[_loc4_] != undefined) {
-        _loc3_.writeShort(displayList[_loc4_]);
-        _loc3_.writeBoolean(param2.getAttributeBool("reversedMask"));
+    writeSegmentPos(ba, 3);
+    writeRelation(xml, ba, true);
+    writeSegmentPos(ba, 4);
+    writeString(ba, xml.customData, true);
+    let opaque = xml.opaque ? Boolean(xml.opaque) : true;
+    ba.writeBoolean(opaque);
+    str = xml.mask;
+    if (displayList[str] != undefined) {
+        ba.writeShort(displayList[str]);
+        let reversedMask = Boolean(xml.reversedMask);
+        ba.writeBoolean(reversedMask);
+    } else {
+        ba.writeShort(-1);
     }
-    else {
-        _loc3_.writeShort(-1);
-    }
-    _loc4_ = param2.getAttribute("hitTest");
-    if (_loc4_) {
-        _loc5_ = _loc4_.split(",");
-        if (_loc5_.length == 1) {
-            writeString(_loc3_, null);
-            _loc3_.writeInt(1);
-            if (displayList[_loc5_[0]] != undefined) {
-                _loc3_.writeInt(displayList[_loc5_[0]]);
+    str = xml.hitTest;
+    if (str) {
+        strArr = str.split(",");
+        if (strArr.length == 1) {
+            writeString(ba, null);
+            ba.writeInt(1);
+            if (displayList[strArr[0]] != undefined) {
+                ba.writeInt(displayList[strArr[0]]);
             }
             else {
-                _loc3_.writeInt(-1);
+                ba.writeInt(-1);
             }
         }
         else {
-            writeString(_loc3_, _loc5_[0]);
-            _loc3_.writeInt(parseInt(_loc5_[1]));
-            _loc3_.writeInt(parseInt(_loc5_[2]));
+            writeString(ba, strArr[0]);
+            ba.writeInt(parseInt(strArr[1]));
+            ba.writeInt(parseInt(strArr[2]));
         }
+    } else {
+        writeString(ba, null);
+        ba.writeInt(0);
+        ba.writeInt(0);
     }
-    else {
-        writeString(_loc3_, null);
-        _loc3_.writeInt(0);
-        _loc3_.writeInt(0);
-    }
-    writeSegmentPos(_loc3_, 5);
-    _loc7_ = 0;
-    _loc11_ = _loc3_.position;
-    _loc3_.writeShort(0);
-    _loc13_ = param2.getEnumerator("transition");
-    while (_loc13_.moveNext()) {
-        _loc10_ = writeTransitionData(_loc13_.current);
-        _loc3_.writeShort(_loc10_.length);
-        _loc3_.writeBytes(_loc10_);
-        _loc10_.clear();
-        _loc7_++;
-    }
-    writeCount(_loc3_, _loc11_, _loc7_);
-    var _loc14_: string = param2.getAttribute("extention");
-    if (_loc14_) {
-        writeSegmentPos(_loc3_, 6);
-        _loc15_ = param2.getChild(_loc14_);
-        if (!_loc15_) {
-            // _loc15_ = any.create(_loc14_);
-        }
-        switch (_loc14_) {
-            case FObjectType.EXT_LABEL:
-                break;
-            case FObjectType.EXT_BUTTON:
-                _loc4_ = _loc15_.getAttribute("mode");
-                if (_loc4_ == FButton.CHECK) {
-                    _loc3_.writeByte(1);
-                }
-                else if (_loc4_ == FButton.RADIO) {
-                    _loc3_.writeByte(2);
-                }
-                else {
-                    _loc3_.writeByte(0);
-                }
-                writeString(_loc3_, _loc15_.getAttribute("sound"));
-                _loc3_.writeFloat(_loc15_.getAttributeInt("volume", 100) / 100);
-                _loc4_ = _loc15_.getAttribute("downEffect", "none");
-                if (_loc4_ == "dark") {
-                    _loc3_.writeByte(1);
-                }
-                else if (_loc4_ == "scale") {
-                    _loc3_.writeByte(2);
-                }
-                else {
-                    _loc3_.writeByte(0);
-                }
-                _loc3_.writeFloat(_loc15_.getAttributeFloat("downEffectValue", 0.8));
-                break;
-            case FObjectType.EXT_COMBOBOX:
-                writeString(_loc3_, _loc15_.getAttribute("dropdown"));
-                break;
-            case FObjectType.EXT_PROGRESS_BAR:
-                _loc4_ = _loc15_.getAttribute("titleType");
-                switch (_loc4_) {
-                    case "percent":
-                        _loc3_.writeByte(0);
-                        break;
-                    case "valueAndmax":
-                        _loc3_.writeByte(1);
-                        break;
-                    case "value":
-                        _loc3_.writeByte(2);
-                        break;
-                    case "max":
-                        _loc3_.writeByte(3);
-                        break;
-                    default:
-                        _loc3_.writeByte(0);
-                }
-                _loc3_.writeBoolean(_loc15_.getAttributeBool("reverse"));
-                break;
-            case FObjectType.EXT_SLIDER:
-                _loc4_ = _loc15_.getAttribute("titleType");
-                switch (_loc4_) {
-                    case "percent":
-                        _loc3_.writeByte(0);
-                        break;
-                    case "valueAndmax":
-                        _loc3_.writeByte(1);
-                        break;
-                    case "value":
-                        _loc3_.writeByte(2);
-                        break;
-                    case "max":
-                        _loc3_.writeByte(3);
-                        break;
-                    default:
-                        _loc3_.writeByte(0);
-                }
-                _loc3_.writeBoolean(_loc15_.getAttributeBool("reverse"));
-                _loc3_.writeBoolean(_loc15_.getAttributeBool("wholeNumbers"));
-                _loc3_.writeBoolean(_loc15_.getAttributeBool("changeOnClick", true));
-                break;
-            case FObjectType.EXT_SCROLLBAR:
-                _loc3_.writeBoolean(_loc15_.getAttributeBool("fixedGripSize"));
-        }
-    }
-    if (_loc12_) {
-        writeSegmentPos(_loc3_, 7);
-        _loc10_ = writeScrollData(param2);
-        _loc3_.writeBytes(_loc10_);
-        _loc10_.clear();
-    }
-    return _loc3_;
+    writeSegmentPos(ba, 5);
+    childrenLen = 0;
+    position = ba.position;
+    ba.writeShort(0);
+    // _loc13_ = xml.getEnumerator("transition");
+    // while (_loc13_.moveNext()) {
+    //     tempByteArray = writeTransitionData(_loc13_.current);
+    //     ba.writeShort(tempByteArray.length);
+    //     ba.writeBytes(tempByteArray);
+    //     tempByteArray.clear();
+    //     childrenLen++;
+    // }
+    // writeCount(ba, position, childrenLen);
+    // var _loc14_: string = xml.getAttribute("extention");
+    // if (_loc14_) {
+    //     writeSegmentPos(ba, 6);
+    //     child = xml.getChild(_loc14_);
+    //     if (!child) {
+    //         // child = any.create(_loc14_);
+    //     }
+    //     switch (_loc14_) {
+    //         case FObjectType.EXT_LABEL:
+    //             break;
+    //         case FObjectType.EXT_BUTTON:
+    //             str = child.getAttribute("mode");
+    //             if (str == FButton.CHECK) {
+    //                 ba.writeByte(1);
+    //             }
+    //             else if (str == FButton.RADIO) {
+    //                 ba.writeByte(2);
+    //             }
+    //             else {
+    //                 ba.writeByte(0);
+    //             }
+    //             writeString(ba, child.getAttribute("sound"));
+    //             ba.writeFloat(child.getAttributeInt("volume", 100) / 100);
+    //             str = child.getAttribute("downEffect", "none");
+    //             if (str == "dark") {
+    //                 ba.writeByte(1);
+    //             }
+    //             else if (str == "scale") {
+    //                 ba.writeByte(2);
+    //             }
+    //             else {
+    //                 ba.writeByte(0);
+    //             }
+    //             ba.writeFloat(child.getAttributeFloat("downEffectValue", 0.8));
+    //             break;
+    //         case FObjectType.EXT_COMBOBOX:
+    //             writeString(ba, child.getAttribute("dropdown"));
+    //             break;
+    //         case FObjectType.EXT_PROGRESS_BAR:
+    //             str = child.getAttribute("titleType");
+    //             switch (str) {
+    //                 case "percent":
+    //                     ba.writeByte(0);
+    //                     break;
+    //                 case "valueAndmax":
+    //                     ba.writeByte(1);
+    //                     break;
+    //                 case "value":
+    //                     ba.writeByte(2);
+    //                     break;
+    //                 case "max":
+    //                     ba.writeByte(3);
+    //                     break;
+    //                 default:
+    //                     ba.writeByte(0);
+    //             }
+    //             ba.writeBoolean(child.getAttributeBool("reverse"));
+    //             break;
+    //         case FObjectType.EXT_SLIDER:
+    //             str = child.getAttribute("titleType");
+    //             switch (str) {
+    //                 case "percent":
+    //                     ba.writeByte(0);
+    //                     break;
+    //                 case "valueAndmax":
+    //                     ba.writeByte(1);
+    //                     break;
+    //                 case "value":
+    //                     ba.writeByte(2);
+    //                     break;
+    //                 case "max":
+    //                     ba.writeByte(3);
+    //                     break;
+    //                 default:
+    //                     ba.writeByte(0);
+    //             }
+    //             ba.writeBoolean(child.getAttributeBool("reverse"));
+    //             ba.writeBoolean(child.getAttributeBool("wholeNumbers"));
+    //             ba.writeBoolean(child.getAttributeBool("changeOnClick", true));
+    //             break;
+    //         case FObjectType.EXT_SCROLLBAR:
+    //             ba.writeBoolean(child.getAttributeBool("fixedGripSize"));
+    //     }
+    // }
+    // if (_loc12_) {
+    //     writeSegmentPos(ba, 7);
+    //     tempByteArray = writeScrollData(xml);
+    //     ba.writeBytes(tempByteArray);
+    //     tempByteArray.clear();
+    // }
+    return ba;
 }
 
-function writeScrollData(param1: any): ByteArray {
-    var _loc3_: String = null;
-    var _loc4_: Array<any>;
-    var _loc2_: ByteArray = new ByteArray();
-    _loc3_ = param1.getAttribute("scroll");
-    if (_loc3_ == "horizontal") {
-        _loc2_.writeByte(0);
+function writeScrollData(element: any): ByteArray {
+    var str: string = "";
+    var strArr: Array<string>;
+    var ba: ByteArray = new ByteArray();
+    str = getAttribute(element,"scroll");
+    if (str == "horizontal") {
+        ba.writeByte(0);
+    } else if (str == "both") {
+        ba.writeByte(2);
+    } else {
+        ba.writeByte(1);
     }
-    else if (_loc3_ == "both") {
-        _loc2_.writeByte(2);
+    str = getAttribute(element,"scrollBar");
+    if (str == "visible") {
+        ba.writeByte(1);
+    } else if (str == "auto") {
+        ba.writeByte(2);
+    } else if (str == "hidden") {
+        ba.writeByte(3);
+    } else {
+        ba.writeByte(0);
     }
-    else {
-        _loc2_.writeByte(1);
+    ba.writeInt(getAttributeInt(element,"scrollBarFlags"));
+    str = getAttribute(element,"scrollBarMargin");
+    if (str) {
+        strArr = str.split(",");
+        ba.writeBoolean(true);
+        ba.writeInt(parseInt(strArr[0]));
+        ba.writeInt(parseInt(strArr[1]));
+        ba.writeInt(parseInt(strArr[2]));
+        ba.writeInt(parseInt(strArr[3]));
+    } else {
+        ba.writeBoolean(false);
     }
-    _loc3_ = param1.getAttribute("scrollBar");
-    if (_loc3_ == "visible") {
-        _loc2_.writeByte(1);
+    str = getAttribute(element,"scrollBarRes");
+    if (str) {
+        strArr = str.split(",");
+        writeString(ba, strArr[0]);
+        writeString(ba, strArr[1]);
+    } else {
+        writeString(ba, null);
+        writeString(ba, null);
     }
-    else if (_loc3_ == "auto") {
-        _loc2_.writeByte(2);
+    str = getAttribute(element,"ptrRes");
+    if (str) {
+        strArr = str.split(",");
+        writeString(ba, strArr[0]);
+        writeString(ba, strArr[1]);
+    } else {
+        writeString(ba, null);
+        writeString(ba, null);
     }
-    else if (_loc3_ == "hidden") {
-        _loc2_.writeByte(3);
-    }
-    else {
-        _loc2_.writeByte(0);
-    }
-    _loc2_.writeInt(param1.getAttributeInt("scrollBarFlags"));
-    _loc3_ = param1.getAttribute("scrollBarMargin");
-    if (_loc3_) {
-        _loc4_ = _loc3_.split(",");
-        _loc2_.writeBoolean(true);
-        _loc2_.writeInt(parseInt(_loc4_[0]));
-        _loc2_.writeInt(parseInt(_loc4_[1]));
-        _loc2_.writeInt(parseInt(_loc4_[2]));
-        _loc2_.writeInt(parseInt(_loc4_[3]));
-    }
-    else {
-        _loc2_.writeBoolean(false);
-    }
-    _loc3_ = param1.getAttribute("scrollBarRes");
-    if (_loc3_) {
-        _loc4_ = _loc3_.split(",");
-        writeString(_loc2_, _loc4_[0]);
-        writeString(_loc2_, _loc4_[1]);
-    }
-    else {
-        writeString(_loc2_, null);
-        writeString(_loc2_, null);
-    }
-    _loc3_ = param1.getAttribute("ptrRes");
-    if (_loc3_) {
-        _loc4_ = _loc3_.split(",");
-        writeString(_loc2_, _loc4_[0]);
-        writeString(_loc2_, _loc4_[1]);
-    }
-    else {
-        writeString(_loc2_, null);
-        writeString(_loc2_, null);
-    }
-    return _loc2_;
+    return ba;
 }
 
-function writeControllerData(param1: any): ByteArray {
+
+function writeControllerData(controller: IController): ByteArray {
     var _loc3_: ByteArray = null;
-    var _loc4_: string = null;
-    var _loc5_: Array<any> = [];
+    var str: string = null;
+    var strArr: Array<string> = [];
     var _loc6_: number = 0;
-    var _loc7_: number = 0;
+    var pageIdx: number = 0;
     var _loc8_: number = 0;
-    var _loc10_: any;
-    var _loc11_: string = null;
-    var _loc12_: string = null;
+    var homePageType: string = null;
+    var homePage: string = null;
     var _loc13_: number = 0;
-    var _loc2_: ByteArray = new ByteArray();
-    startSegments(_loc2_, 3, true);
-    writeSegmentPos(_loc2_, 0);
-    _loc4_ = param1.getAttribute("name");
-    writeString(_loc2_, _loc4_);
-    controllerCache[_loc4_] = controllerCnt++;
-    _loc2_.writeBoolean(param1.getAttributeBool("autoRadioGroupDepth"));
-    writeSegmentPos(_loc2_, 1);
-    _loc4_ = param1.getAttribute("pages");
-    if (_loc4_) {
-        _loc5_ = _loc4_.split(",");
-        _loc7_ = _loc5_.length / 2;
-        _loc2_.writeShort(_loc7_);
+    var ba: ByteArray = new ByteArray();
+    startSegments(ba, 3, true);
+    writeSegmentPos(ba, 0);
+    str = controller.name;
+    writeString(ba, str);
+    controllerCache[str] = controllerCnt++;
+    let autoRadioGroupDepth = getAttributeBool(controller, "autoRadioGroupDepth");
+    ba.writeBoolean(autoRadioGroupDepth);
+    writeSegmentPos(ba, 1);
+    str = controller.pages;
+    if (str) {
+        strArr = str.split(",");
+        pageIdx = strArr.length / 2;
+        ba.writeShort(pageIdx);
         _loc6_ = 0;
-        while (_loc6_ < _loc7_) {
-            writeString(_loc2_, _loc5_[_loc6_ * 2], false, false);
-            writeString(_loc2_, _loc5_[_loc6_ * 2 + 1], false, false);
+        while (_loc6_ < pageIdx) {
+            writeString(ba, strArr[_loc6_ * 2], false, false);
+            writeString(ba, strArr[_loc6_ * 2 + 1], false, false);
             _loc6_++;
         }
-        _loc11_ = param1.getAttribute("homePageType", "default");
-        _loc12_ = param1.getAttribute("homePage", "");
+        homePageType = controller.homePageType || "default";
+        homePage = controller.homePage || "";
         _loc13_ = 0;
-        if (_loc11_ == "specific") {
+        if (homePageType == "specific") {
             _loc6_ = 0;
-            while (_loc6_ < _loc7_) {
-                if (_loc5_[_loc6_ * 2] == _loc12_) {
+            while (_loc6_ < pageIdx) {
+                if (strArr[_loc6_ * 2] == homePage) {
                     _loc13_ = _loc6_;
                     break;
                 }
                 _loc6_++;
             }
         }
-        switch (_loc11_) {
+        switch (homePageType) {
             case "specific":
-                _loc2_.writeByte(1);
-                _loc2_.writeShort(_loc13_);
+                ba.writeByte(1);
+                ba.writeShort(_loc13_);
                 break;
             case "branch":
-                _loc2_.writeByte(2);
+                ba.writeByte(2);
                 break;
             case "variable":
-                _loc2_.writeByte(3);
-                writeString(_loc2_, _loc12_);
+                ba.writeByte(3);
+                writeString(ba, homePage);
                 break;
             default:
-                _loc2_.writeByte(0);
+                ba.writeByte(0);
         }
     } else {
-        _loc2_.writeShort(0);
-        _loc2_.writeByte(0);
+        ba.writeShort(0);
+        ba.writeByte(0);
     }
-    writeSegmentPos(_loc2_, 2);
-    var _loc9_: Array<any> = param1.getChildren();
-    _loc7_ = 0;
-    _loc8_ = _loc2_.position;
-    _loc2_.writeShort(0);
-    for (_loc10_ in _loc9_) {
-        if (_loc10_.getName() == "action") {
-            _loc4_ = _loc10_.getAttribute("type");
-            _loc3_ = writeActionData(_loc4_, _loc10_);
-            _loc2_.writeShort(_loc3_.length + 1);
-            if (_loc4_ == "play_transition") {
-                _loc2_.writeByte(0);
+    writeSegmentPos(ba, 2);
+    var actions: IControllerActionType | IControllerActionType[] = controller.action; // feat. 后续应该会增加其他行为
+    pageIdx = 0;
+    _loc8_ = ba.position;
+    ba.writeShort(0);
+    // for (_loc10_ in action) {
+    if (actions) {
+        if (Array.isArray(actions)) {
+            for (let action of actions) {
+                str = action.type;
+                _loc3_ = writeActionData(action);
+                ba.writeShort(_loc3_.length + 1);
+                if (str == "play_transition") {
+                    ba.writeByte(0);
+                }
+                else if (str == "change_page") {
+                    ba.writeByte(1);
+                }
+                else {
+                    ba.writeByte(0);
+                }
+                ba.writeBytes(_loc3_);
+                pageIdx++;
             }
-            else if (_loc4_ == "change_page") {
-                _loc2_.writeByte(1);
+        } else {
+            str = actions.type;
+            _loc3_ = writeActionData(actions);
+            ba.writeShort(_loc3_.length + 1);
+            if (str == "play_transition") {
+                ba.writeByte(0);
+            }
+            else if (str == "change_page") {
+                ba.writeByte(1);
             }
             else {
-                _loc2_.writeByte(0);
+                ba.writeByte(0);
             }
-            _loc2_.writeBytes(_loc3_);
-            _loc7_++;
+            ba.writeBytes(_loc3_);
+            pageIdx++;
         }
+
     }
-    writeCount(_loc2_, _loc8_, _loc7_);
-    return _loc2_;
+    // }
+    writeCount(ba, _loc8_, pageIdx);
+    return ba;
 }
 
-function writeActionData(param1: string, param2: any): ByteArray {
-    var _loc4_: string = null;
-    var _loc5_: Array<any> = [];
-    var _loc6_: number = 0;
-    var _loc7_: number = 0;
-    var _loc3_: ByteArray = new ByteArray();
-    _loc4_ = param2.getAttribute("fromPage");
-    if (_loc4_) {
-        _loc5_ = _loc4_.split(",");
-        _loc6_ = _loc5_.length;
-        _loc3_.writeShort(_loc6_);
-        _loc7_ = 0;
-        while (_loc7_ < _loc6_) {
-            writeString(_loc3_, _loc5_[_loc7_]);
-            _loc7_++;
+function writeActionData(action: IControllerActionType): ByteArray {
+    var fromPage: string = "";
+    var strArr: Array<any> = [];
+    var strLength: number = 0;
+    var idx: number = 0;
+    var ba: ByteArray = new ByteArray();
+    fromPage = action.fromPage;
+    if (fromPage) {
+        strArr = fromPage.split(",");
+        strLength = strArr.length;
+        ba.writeShort(strLength);
+        idx = 0;
+        while (idx < strLength) {
+            writeString(ba, strArr[idx]);
+            idx++;
         }
     } else {
-        _loc3_.writeShort(0);
+        ba.writeShort(0);
     }
-    _loc4_ = param2.getAttribute("toPage");
-    if (_loc4_) {
-        _loc5_ = _loc4_.split(",");
-        _loc6_ = _loc5_.length;
-        _loc3_.writeShort(_loc6_);
-        _loc7_ = 0;
-        while (_loc7_ < _loc6_) {
-            writeString(_loc3_, _loc5_[_loc7_]);
-            _loc7_++;
+    fromPage = action.toPage;
+    if (fromPage) {
+        strArr = fromPage.split(",");
+        strLength = strArr.length;
+        ba.writeShort(strLength);
+        idx = 0;
+        while (idx < strLength) {
+            writeString(ba, strArr[idx]);
+            idx++;
         }
     } else {
-        _loc3_.writeShort(0);
+        ba.writeShort(0);
     }
-    if (param1 == "play_transition") {
-        writeString(_loc3_, param2.getAttribute("transition"));
-        _loc3_.writeInt(param2.getAttributeInt("repeat", 1));
-        _loc3_.writeFloat(param2.getAttributeFloat("delay"));
-        _loc3_.writeBoolean(param2.getAttributeBool("stopOnExit"));
-    } else if (param1 == "change_page") {
-        writeString(_loc3_, param2.getAttribute("objectId"));
-        writeString(_loc3_, param2.getAttribute("controller"));
-        writeString(_loc3_, param2.getAttribute("targetPage"));
+    if (action.type == "play_transition") {
+        writeString(ba, action.transition);
+        let repeat = getAttributeInt(action, "repeat", 1)
+        ba.writeInt(repeat);
+        let delay = getAttributeFloat(action, "delay")
+        ba.writeFloat(delay);
+        let stopOnExit = getAttributeBool(action, "stopOnExit");
+        ba.writeBoolean(stopOnExit);
+    } else if (action.type == "change_page") {
+        writeString(ba, action.objectId); // objectId is null
+        writeString(ba, action.controller);
+        writeString(ba, action.targetPage);
     }
-    return _loc3_;
+    return ba;
 }
 
-function writeRelation(param1: any, ba: ByteArray, param3: boolean): void {
+function writeRelation(relations: any, ba: ByteArray, param3: boolean): void {
     var _loc4_: string = null;
     var _loc5_: Array<any> = [];
-    var _loc9_: any;
+    var relation: any;
     var _loc10_: number = 0;
     var _loc11_: Array<any> = [];
     var _loc12_: string = null;
@@ -1065,10 +1090,11 @@ function writeRelation(param1: any, ba: ByteArray, param3: boolean): void {
     var _loc17_: any = undefined;
     var _loc6_: Array<any> = [];
     var _loc7_: { [key: string]: any } = {};
-    var _loc8_: any = param1.getEnumerator("relation");
-    while (_loc8_.moveNext()) {
-        _loc9_ = _loc8_.current;
-        _loc4_ = _loc9_.getAttribute("target");
+    let relationLen = relations.length;
+    let relationIdx = 0;
+    while (relationIdx < relationLen) {
+        relation = relations[relationIdx];
+        _loc4_ = relation.target;
         _loc10_ = -1;
         if (_loc4_) {
             if (displayList[_loc4_] != undefined) {
@@ -1081,7 +1107,7 @@ function writeRelation(param1: any, ba: ByteArray, param3: boolean): void {
         else if (param3) {
             continue;
         }
-        _loc4_ = _loc9_.getAttribute("sidePair");
+        _loc4_ = relation.sidePair;
         if (_loc4_) {
             _loc11_ = _loc7_[_loc10_];
             if (!_loc11_) {
@@ -1109,23 +1135,24 @@ function writeRelation(param1: any, ba: ByteArray, param3: boolean): void {
                 _loc16_++;
             }
         }
+        relationIdx++;
     }
     ba.writeByte(_loc6_.length);
-    // for (_loc10_ in _loc6_) {
-    //     ba.writeShort(_loc10_);
-    //     _loc11_ = _loc7_[_loc10_];
-    //     ba.writeByte(_loc11_.length);
-    //     for (_loc16_ in _loc11_) {
-    //         if (_loc16_ >= 10000) {
-    //             ba.writeByte(_loc16_ - 10000);
-    //             ba.writeBoolean(true);
-    //         }
-    //         else {
-    //             ba.writeByte(_loc16_);
-    //             ba.writeBoolean(false);
-    //         }
-    //     }
-    // }
+    for (let item of _loc6_) {
+        ba.writeShort(item);
+        _loc11_ = _loc7_[item];
+        ba.writeByte(_loc11_.length);
+        for (let i of _loc11_) {
+            if (i >= 10000) {
+                ba.writeByte(i - 10000);
+                ba.writeBoolean(true);
+            }
+            else {
+                ba.writeByte(i);
+                ba.writeBoolean(false);
+            }
+        }
+    }
 }
 
 function writeTransitionData(param1: any): ByteArray {
@@ -1260,29 +1287,30 @@ function writeControllerItem(param1: any, ba: ByteArray): void {
     var position: number = ba.position;
     ba.writeShort(0);
     var _loc4_: number = 0;
-    var _loc5_: any = param1.getEnumerator("property");
-    while (_loc5_.moveNext()) {
-        writeString(ba, _loc5_.current.getAttribute("target"));
-        ba.writeShort(_loc5_.current.getAttributeInt("propertyId"));
-        writeString(ba, _loc5_.current.getAttribute("value"), true, true);
-        _loc4_++;
-    }
-    writeCount(ba, position, _loc4_);
+    // todo
+    // var _loc5_: any = param1.getEnumerator("property");
+    // while (_loc5_.moveNext()) {
+    //     writeString(ba, _loc5_.current.getAttribute("target"));
+    //     ba.writeShort(_loc5_.current.getAttributeInt("propertyId"));
+    //     writeString(ba, _loc5_.current.getAttribute("value"), true, true);
+    //     _loc4_++;
+    // }
+    // writeCount(ba, position, _loc4_);
 }
 
-function addComponent(param1: any): ByteArray {
-    var _loc3_: ByteArray = null;
+function addComponent(element: IBaseElement): ByteArray {
+    var tempByteBuffer: ByteArray;
     var _loc4_: string = null;
     var _loc5_: Array<any> = [];
     var _loc6_: number = 0;
-    var _loc7_: number = 0;
-    var _loc8_: Array<any> = null;
+    var idx: number = 0;
+    var gears: Array<IGearBase> = [];
     var _loc9_: any;
-    var _loc10_: number = 0;
-    var _loc11_: number = 0;
+    var position: number = 0;
+    var type: number = 0;
     var _loc13_: number = 0;
     var _loc14_: any;
-    var _loc15_: number = 0;
+    var gearType: number = 0;
     var _loc16_: any = undefined;
     var _loc17_: number = 0;
     var _loc18_: number = 0;
@@ -1297,722 +1325,723 @@ function addComponent(param1: any): ByteArray {
     var _loc27_: any;
     var _loc28_: any = null;
     var _loc29_: number = 0;
-    var _loc2_: ByteArray = new ByteArray();
-    var _loc12_: string = param1.getName();
-    switch (_loc12_) {
+    var ba: ByteArray = new ByteArray();
+    var objectType: string = element.type;
+    switch (objectType) {
         case FObjectType.IMAGE:
-            _loc11_ = 0;
+            type = 0;
             break;
         case FObjectType.MOVIECLIP:
-            _loc11_ = 1;
+            type = 1;
             break;
         case FObjectType.SWF:
-            _loc11_ = 2;
+            type = 2;
             break;
         case FObjectType.GRAPH:
-            _loc11_ = 3;
+            type = 3;
             break;
         case FObjectType.LOADER:
-            _loc11_ = 4;
+            type = 4;
             break;
         case FObjectType.GROUP:
-            _loc11_ = 5;
+            type = 5;
             break;
         case FObjectType.TEXT:
-            if (param1.getAttributeBool("input")) {
-                _loc11_ = 8;
+            if (getAttributeBool(element, "input")) {
+                type = 8;
             }
             else {
-                _loc11_ = 6;
+                type = 6;
             }
             break;
         case FObjectType.RICHTEXT:
-            _loc11_ = 7;
+            type = 7;
             break;
         case FObjectType.COMPONENT:
-            _loc11_ = 9;
+            type = 9;
             break;
         case FObjectType.LIST:
-            if (param1.getAttributeBool("treeView")) {
-                _loc11_ = 17;
+            if (getAttributeBool(element, "treeView")) {
+                type = 17;
             }
             else {
-                _loc11_ = 10;
+                type = 10;
             }
             break;
         default:
-            _loc11_ = 0;
+            type = 0;
     }
-    if (_loc11_ == 17) {
+    if (type == 17) {
         _loc13_ = 10;
-    } else if (_loc11_ == 10) {
+    } else if (type == 10) {
         _loc13_ = 9;
     } else {
         _loc13_ = 7;
     }
-    startSegments(_loc2_, _loc13_, true);
-    writeSegmentPos(_loc2_, 0);
-    _loc2_.writeByte(_loc11_);
-    writeString(_loc2_, param1.getAttribute("src"));
-    writeString(_loc2_, param1.getAttribute("pkg"));
-    writeString(_loc2_, param1.getAttribute("id", ""));
-    writeString(_loc2_, param1.getAttribute("name", ""));
-    _loc4_ = param1.getAttribute("xy");
+    startSegments(ba, _loc13_, true);
+    writeSegmentPos(ba, 0);
+    ba.writeByte(type);
+    writeString(ba, element.src);
+    writeString(ba, element.pkg);
+    writeString(ba, element.id || "");
+    writeString(ba, element.name || "");
+    _loc4_ = element.xy;
     _loc5_ = _loc4_.split(",");
-    _loc2_.writeInt(Number(_loc5_[0]));
-    _loc2_.writeInt(Number(_loc5_[1]));
-    _loc4_ = param1.getAttribute("size");
+    ba.writeInt(Number(_loc5_[0]));
+    ba.writeInt(Number(_loc5_[1]));
+    _loc4_ = element.size;
     if (_loc4_) {
-        _loc2_.writeBoolean(true);
+        ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
-        _loc2_.writeInt(parseInt(_loc5_[0]));
-        _loc2_.writeInt(parseInt(_loc5_[1]));
+        ba.writeInt(parseInt(_loc5_[0]));
+        ba.writeInt(parseInt(_loc5_[1]));
     } else {
-        _loc2_.writeBoolean(false);
+        ba.writeBoolean(false);
     }
-    _loc4_ = param1.getAttribute("restrictSize");
+    _loc4_ = element.restrictSize;
     if (_loc4_) {
-        _loc2_.writeBoolean(true);
+        ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
-        _loc2_.writeInt(parseInt(_loc5_[0]));
-        _loc2_.writeInt(parseInt(_loc5_[1]));
-        _loc2_.writeInt(parseInt(_loc5_[2]));
-        _loc2_.writeInt(parseInt(_loc5_[3]));
+        ba.writeInt(parseInt(_loc5_[0]));
+        ba.writeInt(parseInt(_loc5_[1]));
+        ba.writeInt(parseInt(_loc5_[2]));
+        ba.writeInt(parseInt(_loc5_[3]));
     } else {
-        _loc2_.writeBoolean(false);
+        ba.writeBoolean(false);
     }
-    _loc4_ = param1.getAttribute("scale");
+    _loc4_ = element.scale;
     if (_loc4_) {
-        _loc2_.writeBoolean(true);
+        ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
-        _loc2_.writeFloat(parseFloat(_loc5_[0]));
-        _loc2_.writeFloat(parseFloat(_loc5_[1]));
+        ba.writeFloat(parseFloat(_loc5_[0]));
+        ba.writeFloat(parseFloat(_loc5_[1]));
     } else {
-        _loc2_.writeBoolean(false);
+        ba.writeBoolean(false);
     }
-    _loc4_ = param1.getAttribute("skew");
+    _loc4_ = element.skew;
     if (_loc4_) {
-        _loc2_.writeBoolean(true);
+        ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
-        _loc2_.writeFloat(parseFloat(_loc5_[0]));
-        _loc2_.writeFloat(parseFloat(_loc5_[1]));
+        ba.writeFloat(parseFloat(_loc5_[0]));
+        ba.writeFloat(parseFloat(_loc5_[1]));
     } else {
-        _loc2_.writeBoolean(false);
+        ba.writeBoolean(false);
     }
-    _loc4_ = param1.getAttribute("pivot");
+    _loc4_ = element.pivot;
     if (_loc4_) {
         _loc5_ = _loc4_.split(",");
-        _loc2_.writeBoolean(true);
-        _loc2_.writeFloat(parseFloat(_loc5_[0]));
-        _loc2_.writeFloat(parseFloat(_loc5_[1]));
-        _loc2_.writeBoolean(param1.getAttributeBool("anchor"));
+        ba.writeBoolean(true);
+        ba.writeFloat(parseFloat(_loc5_[0]));
+        ba.writeFloat(parseFloat(_loc5_[1]));
+        ba.writeBoolean(getAttributeBool(element, "anchor"));
     } else {
-        _loc2_.writeBoolean(false);
+        ba.writeBoolean(false);
     }
-    _loc2_.writeFloat(param1.getAttributeFloat("alpha", 1));
-    _loc2_.writeFloat(param1.getAttributeFloat("rotation"));
-    _loc2_.writeBoolean(param1.getAttributeBool("visible", true));
-    _loc2_.writeBoolean(param1.getAttributeBool("touchable", true));
-    _loc2_.writeBoolean(param1.getAttributeBool("grayed"));
-    _loc4_ = param1.getAttribute("blend");
+    ba.writeFloat(getAttributeFloat(element, "alpha", 1));
+    ba.writeFloat(getAttributeFloat(element, "rotation"));
+    ba.writeBoolean(getAttributeBool(element, "visible", true));
+    ba.writeBoolean(getAttributeBool(element, "touchable", true));
+    ba.writeBoolean(getAttributeBool(element, "grayed"));
+    _loc4_ = element.blend;
     switch (_loc4_) {
         case "add":
-            _loc2_.writeByte(2);
+            ba.writeByte(2);
             break;
         case "multiply":
-            _loc2_.writeByte(3);
+            ba.writeByte(3);
             break;
         case "none":
-            _loc2_.writeByte(1);
+            ba.writeByte(1);
             break;
         case "screen":
-            _loc2_.writeByte(4);
+            ba.writeByte(4);
             break;
         case "erase":
-            _loc2_.writeByte(5);
+            ba.writeByte(5);
             break;
         default:
-            _loc2_.writeByte(0);
+            ba.writeByte(0);
     }
-    _loc4_ = param1.getAttribute("filter");
+    _loc4_ = element.filter;
     if (_loc4_) {
         if (_loc4_ == "color") {
-            _loc2_.writeByte(1);
-            _loc4_ = param1.getAttribute("filterData");
+            ba.writeByte(1);
+            _loc4_ = element.filterData;
             _loc5_ = _loc4_.split(",");
-            _loc2_.writeFloat(parseFloat(_loc5_[0]));
-            _loc2_.writeFloat(parseFloat(_loc5_[1]));
-            _loc2_.writeFloat(parseFloat(_loc5_[2]));
-            _loc2_.writeFloat(parseFloat(_loc5_[3]));
+            ba.writeFloat(parseFloat(_loc5_[0]));
+            ba.writeFloat(parseFloat(_loc5_[1]));
+            ba.writeFloat(parseFloat(_loc5_[2]));
+            ba.writeFloat(parseFloat(_loc5_[3]));
         }
         else {
-            _loc2_.writeByte(0);
+            ba.writeByte(0);
         }
     } else {
-        _loc2_.writeByte(0);
+        ba.writeByte(0);
     }
-    writeString(_loc2_, param1.getAttribute("customData"), true);
-    writeSegmentPos(_loc2_, 1);
-    writeString(_loc2_, param1.getAttribute("tooltips"), true);
-    _loc4_ = param1.getAttribute("group");
+    writeString(ba, element.customData, true);
+    writeSegmentPos(ba, 1);
+    writeString(ba, element.tooltips, true);
+    _loc4_ = element.group;
     if (_loc4_ && displayList[_loc4_] != undefined) {
-        _loc2_.writeShort(displayList[_loc4_]);
+        ba.writeShort(displayList[_loc4_]);
     } else {
-        _loc2_.writeShort(-1);
+        ba.writeShort(-1);
     }
-    writeSegmentPos(_loc2_, 2);
-    _loc8_ = param1.getChildren();
-    _loc7_ = 0;
-    _loc10_ = _loc2_.position;
-    _loc2_.writeShort(0);
-    for (_loc14_ in _loc8_) {
-        _loc15_ = FGearBase.getIndexByName(_loc14_.getName());
-        if (_loc15_ != -1) {
-            _loc3_ = writeGearData(Number(_loc15_), _loc14_);
-            if (_loc3_ != null) {
-                _loc7_++;
-                _loc2_.writeShort(_loc3_.length + 1);
-                _loc2_.writeByte(_loc15_);
-                _loc2_.writeBytes(_loc3_);
-                _loc3_.clear();
+    writeSegmentPos(ba, 2);
+    gears = getChildren(element, "gear");
+    idx = 0;
+    position = ba.position;
+    ba.writeShort(0);
+    for (let gear of gears) {
+        gearType = FGearBase.getIndexByName(gear.type);
+        if (gearType != -1) {
+            tempByteBuffer = writeGearData(Number(gearType), gear);
+            if (tempByteBuffer != null) {
+                idx++;
+                ba.writeShort(tempByteBuffer.length + 1);
+                ba.writeByte(gearType);
+                ba.writeBytes(tempByteBuffer);
+                tempByteBuffer.clear();
             }
         }
     }
-    writeCount(_loc2_, _loc10_, _loc7_);
-    writeSegmentPos(_loc2_, 3);
-    writeRelation(param1, _loc2_, false);
-    if (_loc12_ == FObjectType.COMPONENT || _loc12_ == FObjectType.LIST) {
-        writeSegmentPos(_loc2_, 4);
-        _loc16_ = controllerCache[param1.getAttribute("pageController")];
+    writeCount(ba, position, idx);
+    writeSegmentPos(ba, 3);
+    let relations = getChildren(element, "relation");
+    writeRelation(relations, ba, false);
+    if (objectType == FObjectType.COMPONENT || objectType == FObjectType.LIST) {
+        writeSegmentPos(ba, 4);
+        _loc16_ = controllerCache[element.pageController];
         if (_loc16_ != undefined) {
-            _loc2_.writeShort(_loc16_);
+            ba.writeShort(_loc16_);
         }
         else {
-            _loc2_.writeShort(-1);
+            ba.writeShort(-1);
         }
-        _loc4_ = param1.getAttribute("controller");
+        _loc4_ = element.controller;
         if (_loc4_) {
-            _loc10_ = _loc2_.position;
-            _loc2_.writeShort(0);
+            position = ba.position;
+            ba.writeShort(0);
             _loc5_ = _loc4_.split(",");
-            _loc7_ = 0;
+            idx = 0;
             _loc6_ = 0;
             while (_loc6_ < _loc5_.length) {
                 if (_loc5_[_loc6_]) {
-                    writeString(_loc2_, _loc5_[_loc6_]);
-                    writeString(_loc2_, _loc5_[_loc6_ + 1]);
-                    _loc7_++;
+                    writeString(ba, _loc5_[_loc6_]);
+                    writeString(ba, _loc5_[_loc6_ + 1]);
+                    idx++;
                 }
                 _loc6_ = _loc6_ + 2;
             }
-            writeCount(_loc2_, _loc10_, _loc7_);
+            writeCount(ba, position, idx);
         }
         else {
-            _loc2_.writeShort(0);
+            ba.writeShort(0);
         }
-        writeControllerItem(param1, _loc2_);
-    } else if (_loc11_ == 8) {
-        writeSegmentPos(_loc2_, 4);
-        writeString(_loc2_, param1.getAttribute("prompt"));
-        writeString(_loc2_, param1.getAttribute("restrict"));
-        _loc2_.writeInt(param1.getAttributeInt("maxLength"));
-        _loc2_.writeInt(param1.getAttributeInt("keyboardType"));
-        _loc2_.writeBoolean(param1.getAttributeBool("password"));
+        writeControllerItem(element, ba);
+    } else if (type == 8) { // input
+        writeSegmentPos(ba, 4);
+        writeString(ba, getAttribute(element, "prompt"));
+        writeString(ba, getAttribute(element, "restrict"));
+        ba.writeInt(getAttributeInt(element, "maxLength"));
+        ba.writeInt(getAttributeInt(element, "keyboardType"));
+        ba.writeBoolean(getAttributeBool(element, "password"));
     }
-    writeSegmentPos(_loc2_, 5);
-    switch (_loc12_) {
+    writeSegmentPos(ba, 5);
+    switch (objectType) {
         case FObjectType.IMAGE:
-            _loc4_ = param1.getAttribute("color");
+            _loc4_ = (element as IImageElement).color;
             if (_loc4_) {
-                _loc2_.writeBoolean(true);
-                writeColorData(_loc2_, _loc4_, false);
+                ba.writeBoolean(true);
+                writeColorData(ba, _loc4_, false);
             }
             else {
-                _loc2_.writeBoolean(false);
+                ba.writeBoolean(false);
             }
-            _loc4_ = param1.getAttribute("flip");
+            _loc4_ = (element as IImageElement).flip;
             switch (_loc4_) {
                 case "both":
-                    _loc2_.writeByte(3);
+                    ba.writeByte(3);
                     break;
                 case "hz":
-                    _loc2_.writeByte(1);
+                    ba.writeByte(1);
                     break;
                 case "vt":
-                    _loc2_.writeByte(2);
+                    ba.writeByte(2);
                     break;
                 default:
-                    _loc2_.writeByte(0);
+                    ba.writeByte(0);
             }
-            _loc4_ = param1.getAttribute("fillMethod");
-            writeFillMethodData(_loc2_, _loc4_);
+            _loc4_ = (element as IImageElement).fillMethod;
+            writeFillMethodData(ba, _loc4_);
             if (_loc4_ && _loc4_ != "none") {
-                _loc2_.writeByte(param1.getAttributeInt("fillOrigin"));
-                _loc2_.writeBoolean(param1.getAttributeBool("fillClockwise", true));
-                _loc2_.writeFloat(param1.getAttributeInt("fillAmount", 100) / 100);
+                ba.writeByte(getAttributeInt(element, "fillOrigin"));
+                ba.writeBoolean(getAttributeBool(element, "fillClockwise", true));
+                ba.writeFloat(getAttributeInt(element, "fillAmount", 100) / 100);
             }
             break;
         case FObjectType.MOVIECLIP:
-            _loc4_ = param1.getAttribute("color");
+            _loc4_ = getAttribute(element, "color");
             if (_loc4_) {
-                _loc2_.writeBoolean(true);
-                writeColorData(_loc2_, _loc4_, false);
+                ba.writeBoolean(true);
+                writeColorData(ba, _loc4_, false);
             }
             else {
-                _loc2_.writeBoolean(false);
+                ba.writeBoolean(false);
             }
-            _loc2_.writeByte(0);
-            _loc2_.writeInt(param1.getAttributeInt("frame"));
-            _loc2_.writeBoolean(param1.getAttributeBool("playing", true));
+            ba.writeByte(0);
+            ba.writeInt(getAttributeInt(element, "frame"));
+            ba.writeBoolean(getAttributeBool(element, "playing", true));
             break;
         case FObjectType.GRAPH:
-            _loc4_ = param1.getAttribute("type");
-            _loc17_ = writeGraphData(_loc2_, _loc4_);
-            _loc2_.writeInt(param1.getAttributeInt("lineSize", 1));
-            writeColorData(_loc2_, param1.getAttribute("lineColor"));
-            writeColorData(_loc2_, param1.getAttribute("fillColor"), true, 4294967295);
-            _loc4_ = param1.getAttribute("corner", "");
+            _loc4_ = getAttribute(element, "type");
+            _loc17_ = writeGraphData(ba, _loc4_);
+            ba.writeInt(getAttributeInt(element, "lineSize", 1));
+            writeColorData(ba, getAttribute(element, "lineColor"));
+            writeColorData(ba, getAttribute(element, "fillColor"), true, 4294967295);
+            _loc4_ = getAttribute(element, "corner", "");
             if (_loc4_) {
-                _loc2_.writeBoolean(true);
+                ba.writeBoolean(true);
                 _loc5_ = _loc4_.split(",");
                 _loc18_ = parseInt(_loc5_[0]);
-                _loc2_.writeFloat(_loc18_);
+                ba.writeFloat(_loc18_);
                 if (_loc5_[1]) {
-                    _loc2_.writeFloat(parseInt(_loc5_[1]));
+                    ba.writeFloat(parseInt(_loc5_[1]));
                 }
                 else {
-                    _loc2_.writeFloat(_loc18_);
+                    ba.writeFloat(_loc18_);
                 }
                 if (_loc5_[2]) {
-                    _loc2_.writeFloat(parseInt(_loc5_[2]));
+                    ba.writeFloat(parseInt(_loc5_[2]));
                 }
                 else {
-                    _loc2_.writeFloat(_loc18_);
+                    ba.writeFloat(_loc18_);
                 }
                 if (_loc5_[3]) {
-                    _loc2_.writeFloat(parseInt(_loc5_[3]));
+                    ba.writeFloat(parseInt(_loc5_[3]));
                 }
                 else {
-                    _loc2_.writeFloat(_loc18_);
+                    ba.writeFloat(_loc18_);
                 }
             }
             else {
-                _loc2_.writeBoolean(false);
+                ba.writeBoolean(false);
             }
             if (_loc17_ == 3) {
-                _loc4_ = param1.getAttribute("points");
+                _loc4_ = getAttribute(element, "points");
                 _loc5_ = _loc4_.split(",");
-                _loc7_ = _loc5_.length;
-                _loc2_.writeShort(_loc7_);
+                idx = _loc5_.length;
+                ba.writeShort(idx);
                 _loc6_ = 0;
-                while (_loc6_ < _loc7_) {
-                    _loc2_.writeFloat(parseFloat(_loc5_[_loc6_]));
+                while (_loc6_ < idx) {
+                    ba.writeFloat(parseFloat(_loc5_[_loc6_]));
                     _loc6_++;
                 }
             }
             else if (_loc17_ == 4) {
-                _loc2_.writeShort(param1.getAttributeInt("sides"));
-                _loc2_.writeFloat(param1.getAttributeFloat("startAngle"));
-                _loc4_ = param1.getAttribute("distances");
+                ba.writeShort(getAttributeInt(element, "sides"));
+                ba.writeFloat(getAttributeFloat(element, "startAngle"));
+                _loc4_ = getAttribute(element, "distances");
                 if (_loc4_) {
                     _loc5_ = _loc4_.split(",");
-                    _loc7_ = _loc5_.length;
-                    _loc2_.writeShort(_loc7_);
+                    idx = _loc5_.length;
+                    ba.writeShort(idx);
                     _loc6_ = 0;
-                    while (_loc6_ < _loc7_) {
+                    while (_loc6_ < idx) {
                         if (_loc5_[_loc6_]) {
-                            _loc2_.writeFloat(parseFloat(_loc5_[_loc6_]));
+                            ba.writeFloat(parseFloat(_loc5_[_loc6_]));
                         }
                         else {
-                            _loc2_.writeFloat(1);
+                            ba.writeFloat(1);
                         }
                         _loc6_++;
                     }
                 }
                 else {
-                    _loc2_.writeShort(0);
+                    ba.writeShort(0);
                 }
             }
             break;
         case FObjectType.LOADER:
-            writeString(_loc2_, param1.getAttribute("url", ""));
-            writeAlignData(_loc2_, param1.getAttribute("align"));
-            writeValignData(_loc2_, param1.getAttribute("vAlign"));
-            _loc4_ = param1.getAttribute("fill");
+            writeString(ba, getAttribute(element, "url", ""));
+            writeAlignData(ba, getAttribute(element, "align"));
+            writeValignData(ba, getAttribute(element, "vAlign"));
+            _loc4_ = getAttribute(element, "fill");
             switch (_loc4_) {
                 case "none":
-                    _loc2_.writeByte(0);
+                    ba.writeByte(0);
                     break;
                 case "scale":
-                    _loc2_.writeByte(1);
+                    ba.writeByte(1);
                     break;
                 case "scaleMatchHeight":
-                    _loc2_.writeByte(2);
+                    ba.writeByte(2);
                     break;
                 case "scaleMatchWidth":
-                    _loc2_.writeByte(3);
+                    ba.writeByte(3);
                     break;
                 case "scaleFree":
-                    _loc2_.writeByte(4);
+                    ba.writeByte(4);
                     break;
                 case "scaleNoBorder":
-                    _loc2_.writeByte(5);
+                    ba.writeByte(5);
                     break;
                 default:
-                    _loc2_.writeByte(0);
+                    ba.writeByte(0);
             }
-            _loc2_.writeBoolean(param1.getAttributeBool("shrinkOnly"));
-            _loc2_.writeBoolean(param1.getAttributeBool("autoSize"));
-            _loc2_.writeBoolean(param1.getAttributeBool("errorSign"));
-            _loc2_.writeBoolean(param1.getAttributeBool("playing", true));
-            _loc2_.writeInt(param1.getAttributeInt("frame"));
-            _loc4_ = param1.getAttribute("color");
+            ba.writeBoolean(getAttributeBool(element, "shrinkOnly"));
+            ba.writeBoolean(getAttributeBool(element, "autoSize"));
+            ba.writeBoolean(getAttributeBool(element, "errorSign"));
+            ba.writeBoolean(getAttributeBool(element, "playing", true));
+            ba.writeInt(getAttributeInt(element, "frame"));
+            _loc4_ = getAttribute(element, "color");
             if (_loc4_) {
-                _loc2_.writeBoolean(true);
-                writeColorData(_loc2_, _loc4_, false);
+                ba.writeBoolean(true);
+                writeColorData(ba, _loc4_, false);
             }
             else {
-                _loc2_.writeBoolean(false);
+                ba.writeBoolean(false);
             }
-            _loc4_ = param1.getAttribute("fillMethod");
-            writeFillMethodData(_loc2_, _loc4_);
+            _loc4_ = getAttribute(element, "fillMethod");
+            writeFillMethodData(ba, _loc4_);
             if (_loc4_ && _loc4_ != "none") {
-                _loc2_.writeByte(param1.getAttributeInt("fillOrigin"));
-                _loc2_.writeBoolean(param1.getAttributeBool("fillClockwise", true));
-                _loc2_.writeFloat(param1.getAttributeInt("fillAmount", 100) / 100);
+                ba.writeByte(getAttributeInt(element, "fillOrigin"));
+                ba.writeBoolean(getAttributeBool(element, "fillClockwise", true));
+                ba.writeFloat(getAttributeInt(element, "fillAmount", 100) / 100);
             }
             break;
         case FObjectType.GROUP:
-            _loc4_ = param1.getAttribute("layout");
+            _loc4_ = getAttribute(element, "layout");
             switch (_loc4_) {
                 case "hz":
-                    _loc2_.writeByte(1);
+                    ba.writeByte(1);
                     break;
                 case "vt":
-                    _loc2_.writeByte(2);
+                    ba.writeByte(2);
                     break;
                 default:
-                    _loc2_.writeByte(0);
+                    ba.writeByte(0);
             }
-            _loc2_.writeInt(param1.getAttributeInt("lineGap"));
-            _loc2_.writeInt(param1.getAttributeInt("colGap"));
-            _loc2_.writeBoolean(param1.getAttributeBool("excludeInvisibles"));
-            _loc2_.writeBoolean(param1.getAttributeBool("autoSizeDisabled"));
-            _loc2_.writeShort(param1.getAttributeInt("mainGridIndex", -1));
+            ba.writeInt(getAttributeInt(element, "lineGap"));
+            ba.writeInt(getAttributeInt(element, "colGap"));
+            ba.writeBoolean(getAttributeBool(element, "excludeInvisibles"));
+            ba.writeBoolean(getAttributeBool(element, "autoSizeDisabled"));
+            ba.writeShort(getAttributeInt(element, "mainGridIndex", -1));
             break;
         case FObjectType.TEXT:
         case FObjectType.RICHTEXT:
-            writeString(_loc2_, param1.getAttribute("font"));
-            _loc2_.writeShort(param1.getAttributeInt("fontSize"));
-            writeColorData(_loc2_, param1.getAttribute("color"), false);
-            writeAlignData(_loc2_, param1.getAttribute("align"));
-            writeValignData(_loc2_, param1.getAttribute("vAlign"));
-            _loc2_.writeShort(param1.getAttributeInt("leading", 3));
-            _loc2_.writeShort(param1.getAttributeInt("letterSpacing"));
-            _loc2_.writeBoolean(param1.getAttributeBool("ubb"));
-            writeTextSizeData(_loc2_, param1.getAttribute("autoSize", "both"));
-            _loc2_.writeBoolean(param1.getAttributeBool("underline"));
-            _loc2_.writeBoolean(param1.getAttributeBool("italic"));
-            _loc2_.writeBoolean(param1.getAttributeBool("bold"));
-            _loc2_.writeBoolean(param1.getAttributeBool("singleLine"));
-            _loc4_ = param1.getAttribute("strokeColor");
+            writeString(ba, getAttribute(element, "font"));
+            ba.writeShort(getAttributeInt(element, "fontSize"));
+            writeColorData(ba, getAttribute(element, "color"), false);
+            writeAlignData(ba, getAttribute(element, "align"));
+            writeValignData(ba, getAttribute(element, "vAlign"));
+            ba.writeShort(getAttributeInt(element, "leading", 3));
+            ba.writeShort(getAttributeInt(element, "letterSpacing"));
+            ba.writeBoolean(getAttributeBool(element, "ubb"));
+            writeTextSizeData(ba, getAttribute(element, "autoSize", "both"));
+            ba.writeBoolean(getAttributeBool(element, "underline"));
+            ba.writeBoolean(getAttributeBool(element, "italic"));
+            ba.writeBoolean(getAttributeBool(element, "bold"));
+            ba.writeBoolean(getAttributeBool(element, "singleLine"));
+            _loc4_ = getAttribute(element, "strokeColor");
             if (_loc4_) {
-                _loc2_.writeBoolean(true);
-                writeColorData(_loc2_, _loc4_);
-                _loc2_.writeFloat(param1.getAttributeInt("strokeSize", 1));
+                ba.writeBoolean(true);
+                writeColorData(ba, _loc4_);
+                ba.writeFloat(getAttributeInt(element, "strokeSize", 1));
             }
             else {
-                _loc2_.writeBoolean(false);
+                ba.writeBoolean(false);
             }
-            _loc4_ = param1.getAttribute("shadowColor");
+            _loc4_ = getAttribute(element, "shadowColor");
             if (_loc4_) {
-                _loc2_.writeBoolean(true);
-                writeColorData(_loc2_, param1.getAttribute("shadowColor"));
-                _loc4_ = param1.getAttribute("shadowOffset");
+                ba.writeBoolean(true);
+                writeColorData(ba, getAttribute(element, "shadowColor"));
+                _loc4_ = getAttribute(element, "shadowOffset");
                 if (_loc4_) {
                     _loc5_ = _loc4_.split(",");
-                    _loc2_.writeFloat(parseFloat(_loc5_[0]));
-                    _loc2_.writeFloat(parseFloat(_loc5_[1]));
+                    ba.writeFloat(parseFloat(_loc5_[0]));
+                    ba.writeFloat(parseFloat(_loc5_[1]));
                 }
                 else {
-                    _loc2_.writeFloat(1);
-                    _loc2_.writeFloat(1);
+                    ba.writeFloat(1);
+                    ba.writeFloat(1);
                 }
             }
             else {
-                _loc2_.writeBoolean(false);
+                ba.writeBoolean(false);
             }
-            _loc2_.writeBoolean(param1.getAttributeBool("vars"));
+            ba.writeBoolean(getAttributeBool(element, "vars"));
             break;
         case FObjectType.COMPONENT:
             break;
         case FObjectType.LIST:
-            _loc19_ = param1.getAttribute("layout");
+            _loc19_ = getAttribute(element, "layout");
             switch (_loc19_) {
                 case "column":
-                    _loc2_.writeByte(0);
+                    ba.writeByte(0);
                     break;
                 case "row":
-                    _loc2_.writeByte(1);
+                    ba.writeByte(1);
                     break;
                 case "flow_hz":
-                    _loc2_.writeByte(2);
+                    ba.writeByte(2);
                     break;
                 case "flow_vt":
-                    _loc2_.writeByte(3);
+                    ba.writeByte(3);
                     break;
                 case "pagination":
-                    _loc2_.writeByte(4);
+                    ba.writeByte(4);
                     break;
                 default:
-                    _loc2_.writeByte(0);
+                    ba.writeByte(0);
             }
-            _loc4_ = param1.getAttribute("selectionMode");
+            _loc4_ = getAttribute(element, "selectionMode");
             switch (_loc4_) {
                 case "single":
-                    _loc2_.writeByte(0);
+                    ba.writeByte(0);
                     break;
                 case "multiple":
-                    _loc2_.writeByte(1);
+                    ba.writeByte(1);
                     break;
                 case "multipleSingleClick":
-                    _loc2_.writeByte(2);
+                    ba.writeByte(2);
                     break;
                 case "none":
-                    _loc2_.writeByte(3);
+                    ba.writeByte(3);
                     break;
                 default:
-                    _loc2_.writeByte(0);
+                    ba.writeByte(0);
             }
-            writeAlignData(_loc2_, param1.getAttribute("align"));
-            writeValignData(_loc2_, param1.getAttribute("vAlign"));
-            _loc2_.writeShort(param1.getAttributeInt("lineGap"));
-            _loc2_.writeShort(param1.getAttributeInt("colGap"));
-            _loc20_ = param1.getAttributeInt("lineItemCount");
-            _loc21_ = param1.getAttributeInt("lineItemCount2");
+            writeAlignData(ba, getAttribute(element, "align"));
+            writeValignData(ba, getAttribute(element, "vAlign"));
+            ba.writeShort(getAttributeInt(element, "lineGap"));
+            ba.writeShort(getAttributeInt(element, "colGap"));
+            _loc20_ = getAttributeInt(element, "lineItemCount");
+            _loc21_ = getAttributeInt(element, "lineItemCount2");
             if (_loc19_ == "flow_hz") {
-                _loc2_.writeShort(0);
-                _loc2_.writeShort(_loc20_);
+                ba.writeShort(0);
+                ba.writeShort(_loc20_);
             }
             else if (_loc19_ == "flow_vt") {
-                _loc2_.writeShort(_loc20_);
-                _loc2_.writeShort(0);
+                ba.writeShort(_loc20_);
+                ba.writeShort(0);
             }
             else if (_loc19_ == "pagination") {
-                _loc2_.writeShort(_loc21_);
-                _loc2_.writeShort(_loc20_);
+                ba.writeShort(_loc21_);
+                ba.writeShort(_loc20_);
             }
             else {
-                _loc2_.writeShort(0);
-                _loc2_.writeShort(0);
+                ba.writeShort(0);
+                ba.writeShort(0);
             }
             if (!_loc19_ || _loc19_ == "row" || _loc19_ == "column") {
-                _loc2_.writeBoolean(param1.getAttributeBool("autoItemSize", true));
+                ba.writeBoolean(getAttributeBool(element, "autoItemSize", true));
             }
             else {
-                _loc2_.writeBoolean(param1.getAttributeBool("autoItemSize", false));
+                ba.writeBoolean(getAttributeBool(element, "autoItemSize", false));
             }
-            _loc4_ = param1.getAttribute("renderOrder");
+            _loc4_ = getAttribute(element, "renderOrder");
             switch (_loc4_) {
                 case "ascent":
-                    _loc2_.writeByte(0);
+                    ba.writeByte(0);
                     break;
                 case "descent":
-                    _loc2_.writeByte(1);
+                    ba.writeByte(1);
                     break;
                 case "arch":
-                    _loc2_.writeByte(2);
+                    ba.writeByte(2);
                     break;
                 default:
-                    _loc2_.writeByte(0);
+                    ba.writeByte(0);
             }
-            _loc2_.writeShort(param1.getAttributeInt("apex"));
-            _loc4_ = param1.getAttribute("margin");
+            ba.writeShort(getAttributeInt(element, "apex"));
+            _loc4_ = getAttribute(element, "margin");
             if (_loc4_) {
                 _loc5_ = _loc4_.split(",");
-                _loc2_.writeBoolean(true);
-                _loc2_.writeInt(parseInt(_loc5_[0]));
-                _loc2_.writeInt(parseInt(_loc5_[1]));
-                _loc2_.writeInt(parseInt(_loc5_[2]));
-                _loc2_.writeInt(parseInt(_loc5_[3]));
+                ba.writeBoolean(true);
+                ba.writeInt(parseInt(_loc5_[0]));
+                ba.writeInt(parseInt(_loc5_[1]));
+                ba.writeInt(parseInt(_loc5_[2]));
+                ba.writeInt(parseInt(_loc5_[3]));
             }
             else {
-                _loc2_.writeBoolean(false);
+                ba.writeBoolean(false);
             }
-            _loc4_ = param1.getAttribute("overflow");
+            _loc4_ = getAttribute(element, "overflow");
             if (_loc4_ == "hidden") {
-                _loc2_.writeByte(1);
+                ba.writeByte(1);
             }
             else if (_loc4_ == "scroll") {
-                _loc2_.writeByte(2);
+                ba.writeByte(2);
             }
             else {
-                _loc2_.writeByte(0);
+                ba.writeByte(0);
             }
-            _loc4_ = param1.getAttribute("clipSoftness");
+            _loc4_ = getAttribute(element, "clipSoftness");
             if (_loc4_) {
                 _loc5_ = _loc4_.split(",");
-                _loc2_.writeBoolean(true);
-                _loc2_.writeInt(parseInt(_loc5_[0]));
-                _loc2_.writeInt(parseInt(_loc5_[1]));
+                ba.writeBoolean(true);
+                ba.writeInt(parseInt(_loc5_[0]));
+                ba.writeInt(parseInt(_loc5_[1]));
             }
             else {
-                _loc2_.writeBoolean(false);
+                ba.writeBoolean(false);
             }
-            _loc2_.writeBoolean(param1.getAttributeBool("scrollItemToViewOnClick", true));
-            _loc2_.writeBoolean(param1.getAttributeBool("foldInvisibleItems"));
+            ba.writeBoolean(getAttributeBool(element, "scrollItemToViewOnClick", true));
+            ba.writeBoolean(getAttributeBool(element, "foldInvisibleItems"));
             break;
         case FObjectType.SWF:
-            _loc2_.writeBoolean(param1.getAttributeBool("playing", true));
+            ba.writeBoolean(getAttributeBool(element, "playing", true));
     }
-    writeSegmentPos(_loc2_, 6);
-    switch (_loc12_) {
+    writeSegmentPos(ba, 6);
+    switch (objectType) {
         case FObjectType.TEXT:
         case FObjectType.RICHTEXT:
-            writeString(_loc2_, param1.getAttribute("text"), true);
+            writeString(ba, getAttribute(element, "text"), true);
             break;
         case FObjectType.COMPONENT:
-            _loc8_ = param1.getChildren();
-            for (_loc14_ in _loc8_) {
-                switch (_loc14_.getName()) {
+            gears = getChildren(element, ["Label","Button","Combobox","Slider","Scrollbar"]);
+            for (let gear of gears) {
+                switch (gear.type) {
                     case FObjectType.EXT_LABEL:
-                        _loc2_.writeByte(11);
-                        writeString(_loc2_, _loc14_.getAttribute("title"), true);
-                        writeString(_loc2_, _loc14_.getAttribute("icon"));
-                        _loc4_ = _loc14_.getAttribute("titleColor");
+                        ba.writeByte(11);
+                        writeString(ba, getAttribute(gear,"title"), true);
+                        writeString(ba, getAttribute(gear,"icon"));
+                        _loc4_ = getAttribute(gear,"titleColor");
                         if (_loc4_) {
-                            _loc2_.writeBoolean(true);
-                            writeColorData(_loc2_, _loc4_);
+                            ba.writeBoolean(true);
+                            writeColorData(ba, _loc4_);
                         }
                         else {
-                            _loc2_.writeBoolean(false);
+                            ba.writeBoolean(false);
                         }
-                        _loc2_.writeInt(_loc14_.getAttributeInt("titleFontSize"));
-                        _loc22_ = _loc14_.getAttribute("prompt");
-                        _loc23_ = _loc14_.getAttribute("restrict");
-                        _loc24_ = _loc14_.getAttributeInt("maxLength");
-                        _loc25_ = _loc14_.getAttributeInt("keyboardType");
-                        _loc26_ = _loc14_.getAttributeBool("password");
+                        ba.writeInt(getAttributeInt(gear,"titleFontSize"));
+                        _loc22_ = getAttribute(gear,"prompt");
+                        _loc23_ = getAttribute(gear,"restrict");
+                        _loc24_ = getAttributeInt(gear,"maxLength");
+                        _loc25_ = getAttributeInt(gear,"keyboardType");
+                        _loc26_ = getAttributeBool(gear,"password");
                         if (_loc22_ || _loc23_ || _loc24_ || _loc25_ || _loc26_) {
-                            _loc2_.writeBoolean(true);
-                            writeString(_loc2_, _loc22_, true);
-                            writeString(_loc2_, _loc23_);
-                            _loc2_.writeInt(_loc24_);
-                            _loc2_.writeInt(_loc25_);
-                            _loc2_.writeBoolean(_loc26_);
+                            ba.writeBoolean(true);
+                            writeString(ba, _loc22_, true);
+                            writeString(ba, _loc23_);
+                            ba.writeInt(_loc24_);
+                            ba.writeInt(_loc25_);
+                            ba.writeBoolean(_loc26_);
                         }
                         else {
-                            _loc2_.writeBoolean(false);
+                            ba.writeBoolean(false);
                         }
                         continue;
                     case FObjectType.EXT_BUTTON:
-                        _loc2_.writeByte(12);
-                        writeString(_loc2_, _loc14_.getAttribute("title"), true);
-                        writeString(_loc2_, _loc14_.getAttribute("selectedTitle"), true);
-                        writeString(_loc2_, _loc14_.getAttribute("icon"));
-                        writeString(_loc2_, _loc14_.getAttribute("selectedIcon"));
-                        _loc4_ = _loc14_.getAttribute("titleColor");
+                        ba.writeByte(12);
+                        writeString(ba, getAttribute(gear,"title"), true);
+                        writeString(ba, getAttribute(gear,"selectedTitle"), true);
+                        writeString(ba, getAttribute(gear,"icon"));
+                        writeString(ba, getAttribute(gear,"selectedIcon"));
+                        _loc4_ = getAttribute(gear,"titleColor");
                         if (_loc4_) {
-                            _loc2_.writeBoolean(true);
-                            writeColorData(_loc2_, _loc4_);
+                            ba.writeBoolean(true);
+                            writeColorData(ba, _loc4_);
                         }
                         else {
-                            _loc2_.writeBoolean(false);
+                            ba.writeBoolean(false);
                         }
-                        _loc2_.writeInt(_loc14_.getAttributeInt("titleFontSize"));
-                        _loc4_ = _loc14_.getAttribute("controller");
+                        ba.writeInt(getAttributeInt(gear,"titleFontSize"));
+                        _loc4_ = getAttribute(gear,"controller");
                         if (_loc4_) {
                             _loc16_ = controllerCache[_loc4_];
                             if (_loc16_ != undefined) {
-                                _loc2_.writeShort(_loc16_);
+                                ba.writeShort(_loc16_);
                             }
                             else {
-                                _loc2_.writeShort(-1);
+                                ba.writeShort(-1);
                             }
                         }
                         else {
-                            _loc2_.writeShort(-1);
+                            ba.writeShort(-1);
                         }
-                        writeString(_loc2_, _loc14_.getAttribute("page"));
-                        writeString(_loc2_, _loc14_.getAttribute("sound"), false, false);
-                        _loc4_ = _loc14_.getAttribute("volume");
+                        writeString(ba, getAttribute(gear,"page"));
+                        writeString(ba, getAttribute(gear,"sound"), false, false);
+                        _loc4_ = getAttribute(gear,"volume");
                         if (_loc4_) {
-                            _loc2_.writeBoolean(true);
-                            _loc2_.writeFloat(parseInt(_loc4_) / 100);
+                            ba.writeBoolean(true);
+                            ba.writeFloat(parseInt(_loc4_) / 100);
                         }
                         else {
-                            _loc2_.writeBoolean(false);
+                            ba.writeBoolean(false);
                         }
-                        _loc2_.writeBoolean(_loc14_.getAttributeBool("checked"));
+                        ba.writeBoolean(getAttributeBool(gear,"checked"));
                         continue;
                     case FObjectType.EXT_COMBOBOX:
-                        _loc2_.writeByte(13);
-                        _loc10_ = _loc2_.position;
-                        _loc2_.writeShort(0);
-                        _loc28_ = _loc14_.getEnumerator("item");
-                        _loc7_ = 0;
+                        ba.writeByte(13);
+                        position = ba.position;
+                        ba.writeShort(0);
+                        // _loc28_ = getEnumerator("item");  // todo
+                        idx = 0;
                         while (_loc28_.moveNext()) {
-                            _loc7_++;
+                            idx++;
                             _loc27_ = _loc28_.current;
-                            _loc3_ = new ByteArray();
-                            writeString(_loc3_, _loc27_.getAttribute("title"), true, false);
-                            writeString(_loc3_, _loc27_.getAttribute("value"), false, false);
-                            writeString(_loc3_, _loc27_.getAttribute("icon"));
-                            _loc2_.writeShort(_loc3_.length);
-                            _loc2_.writeBytes(_loc3_);
-                            _loc3_.clear();
+                            tempByteBuffer = new ByteArray();
+                            writeString(tempByteBuffer, _loc27_.getAttribute("title"), true, false);
+                            writeString(tempByteBuffer, _loc27_.getAttribute("value"), false, false);
+                            writeString(tempByteBuffer, _loc27_.getAttribute("icon"));
+                            ba.writeShort(tempByteBuffer.length);
+                            ba.writeBytes(tempByteBuffer);
+                            tempByteBuffer.clear();
                         }
-                        writeCount(_loc2_, _loc10_, _loc7_);
-                        writeString(_loc2_, _loc14_.getAttribute("title"), true);
-                        writeString(_loc2_, _loc14_.getAttribute("icon"));
-                        _loc4_ = _loc14_.getAttribute("titleColor");
+                        writeCount(ba, position, idx);
+                        writeString(ba, getAttribute(gear,"title"), true);
+                        writeString(ba, getAttribute(gear,"icon"));
+                        _loc4_ = getAttribute(gear,"titleColor");
                         if (_loc4_) {
-                            _loc2_.writeBoolean(true);
-                            writeColorData(_loc2_, _loc4_);
+                            ba.writeBoolean(true);
+                            writeColorData(ba, _loc4_);
                         }
                         else {
-                            _loc2_.writeBoolean(false);
+                            ba.writeBoolean(false);
                         }
-                        _loc2_.writeInt(_loc14_.getAttributeInt("visibleItemCount"));
-                        _loc4_ = _loc14_.getAttribute("direction");
+                        ba.writeInt(getAttributeInt(gear,"visibleItemCount"));
+                        _loc4_ = getAttribute(gear,"direction");
                         switch (_loc4_) {
                             case "down":
-                                _loc2_.writeByte(2);
+                                ba.writeByte(2);
                                 break;
                             case "up":
-                                _loc2_.writeByte(1);
+                                ba.writeByte(1);
                                 break;
                             default:
-                                _loc2_.writeByte(0);
+                                ba.writeByte(0);
                         }
-                        _loc4_ = _loc14_.getAttribute("selectionController");
+                        _loc4_ = getAttribute(gear,"selectionController");
                         if (_loc4_) {
                             _loc16_ = controllerCache[_loc4_];
                             if (_loc16_ != undefined) {
-                                _loc2_.writeShort(_loc16_);
+                                ba.writeShort(_loc16_);
                             }
                             else {
-                                _loc2_.writeShort(-1);
+                                ba.writeShort(-1);
                             }
                         }
                         else {
-                            _loc2_.writeShort(-1);
+                            ba.writeShort(-1);
                         }
                         continue;
                     case FObjectType.EXT_PROGRESS_BAR:
-                        _loc2_.writeByte(14);
-                        _loc2_.writeInt(_loc14_.getAttributeInt("value"));
-                        _loc2_.writeInt(_loc14_.getAttributeInt("max", 100));
-                        _loc2_.writeInt(_loc14_.getAttributeInt("min"));
+                        ba.writeByte(14);
+                        ba.writeInt(getAttributeInt(gear,"value"));
+                        ba.writeInt(getAttributeInt(gear,"max", 100));
+                        ba.writeInt(getAttributeInt(gear,"min"));
                         continue;
                     case FObjectType.EXT_SLIDER:
-                        _loc2_.writeByte(15);
-                        _loc2_.writeInt(_loc14_.getAttributeInt("value"));
-                        _loc2_.writeInt(_loc14_.getAttributeInt("max", 100));
-                        _loc2_.writeInt(_loc14_.getAttributeInt("min"));
+                        ba.writeByte(15);
+                        ba.writeInt(getAttributeInt(gear,"value"));
+                        ba.writeInt(getAttributeInt(gear,"max", 100));
+                        ba.writeInt(getAttributeInt(gear,"min"));
                         continue;
                     case FObjectType.EXT_SCROLLBAR:
-                        _loc2_.writeByte(16);
+                        ba.writeByte(16);
                         continue;
                     default:
                         continue;
@@ -2020,206 +2049,209 @@ function addComponent(param1: any): ByteArray {
             }
             break;
         case FObjectType.LIST:
-            _loc4_ = param1.getAttribute("selectionController");
+            _loc4_ = getAttribute(element, "selectionController");
             if (_loc4_) {
                 _loc16_ = controllerCache[_loc4_];
                 if (_loc16_ != undefined) {
-                    _loc2_.writeShort(_loc16_);
+                    ba.writeShort(_loc16_);
                 }
                 else {
-                    _loc2_.writeShort(-1);
+                    ba.writeShort(-1);
                 }
             }
             else {
-                _loc2_.writeShort(-1);
+                ba.writeShort(-1);
             }
     }
-    if (_loc12_ == FObjectType.LIST) {
-        if (param1.getAttribute("overflow") == "scroll") {
-            writeSegmentPos(_loc2_, 7);
-            _loc3_ = writeScrollData(param1);
-            _loc2_.writeBytes(_loc3_);
-            _loc3_.clear();
+    if (objectType == FObjectType.LIST) {
+        if (getAttribute(element, "overflow") == "scroll") {
+            writeSegmentPos(ba, 7);
+            tempByteBuffer = writeScrollData(element);
+            ba.writeBytes(tempByteBuffer);
+            tempByteBuffer.clear();
         }
-        writeSegmentPos(_loc2_, 8);
-        writeString(_loc2_, param1.getAttribute("defaultItem"));
-        _loc28_ = param1.getEnumerator("item");
-        _loc7_ = 0;
-        helperIntList.length = _loc7_;
-        while (_loc28_.moveNext()) {
-            _loc14_ = _loc28_.current;
-            _loc29_ = _loc14_.getAttributeInt("level", 0);
-            helperIntList[_loc7_] = _loc29_;
-            _loc7_++;
+        writeSegmentPos(ba, 8);
+        writeString(ba, getAttribute(element, "defaultItem"));
+        // _loc28_ = element.getEnumerator(element,"item");
+        let items = (element as IListElement).item;
+        let itemLen = items.length;
+        idx = 0;
+        helperIntList.length = idx;
+
+        while (idx<itemLen) {
+            let item = items[idx];
+            _loc29_ = getAttributeInt(item,"level", 0);
+            helperIntList[idx] = _loc29_;
+            idx++;
         }
-        _loc28_.reset();
+
         _loc6_ = 0;
-        _loc2_.writeShort(_loc7_);
-        while (_loc28_.moveNext()) {
-            _loc14_ = _loc28_.current;
-            _loc3_ = new ByteArray();
-            writeString(_loc3_, _loc14_.getAttribute("url"));
-            if (_loc11_ == 17) {
+        ba.writeShort(idx);
+        let itemIdx = 0;
+        while (itemIdx<itemLen) {
+            let item  = items[itemIdx];
+            tempByteBuffer = new ByteArray();
+            writeString(tempByteBuffer, getAttribute(item,"url"));
+            if (type == 17) {
                 _loc29_ = helperIntList[_loc6_];
-                if (_loc6_ != _loc7_ - 1 && helperIntList[_loc6_ + 1] > _loc29_) {
-                    _loc3_.writeBoolean(true);
+                if (_loc6_ != idx - 1 && helperIntList[_loc6_ + 1] > _loc29_) {
+                    tempByteBuffer.writeBoolean(true);
                 }
                 else {
-                    _loc3_.writeBoolean(false);
+                    tempByteBuffer.writeBoolean(false);
                 }
-                _loc3_.writeByte(_loc29_);
+                tempByteBuffer.writeByte(_loc29_);
             }
-            writeString(_loc3_, _loc14_.getAttribute("title"), true);
-            writeString(_loc3_, _loc14_.getAttribute("selectedTitle"), true);
-            writeString(_loc3_, _loc14_.getAttribute("icon"));
-            writeString(_loc3_, _loc14_.getAttribute("selectedIcon"));
-            writeString(_loc3_, _loc14_.getAttribute("name"));
-            _loc4_ = _loc14_.getAttribute("controllers");
+            writeString(tempByteBuffer, getAttribute(item,"title"), true);
+            writeString(tempByteBuffer, getAttribute(item,"selectedTitle"), true);
+            writeString(tempByteBuffer, getAttribute(item,"icon"));
+            writeString(tempByteBuffer, getAttribute(item,"selectedIcon"));
+            writeString(tempByteBuffer, getAttribute(item,"name"));
+            _loc4_ = getAttribute(item,"controllers");
             if (_loc4_) {
                 _loc5_ = _loc4_.split(",");
-                _loc3_.writeShort(_loc5_.length / 2);
+                tempByteBuffer.writeShort(_loc5_.length / 2);
                 _loc6_ = 0;
                 while (_loc6_ < _loc5_.length) {
-                    writeString(_loc3_, _loc5_[_loc6_]);
-                    writeString(_loc3_, _loc5_[_loc6_ + 1]);
+                    writeString(tempByteBuffer, _loc5_[_loc6_]);
+                    writeString(tempByteBuffer, _loc5_[_loc6_ + 1]);
                     _loc6_ = _loc6_ + 2;
                 }
             }
             else {
-                _loc3_.writeShort(0);
+                tempByteBuffer.writeShort(0);
             }
-            writeControllerItem(_loc14_, _loc3_);
-            _loc2_.writeShort(_loc3_.length);
-            _loc2_.writeBytes(_loc3_);
-            _loc3_.clear();
+            writeControllerItem(_loc14_, tempByteBuffer);
+            ba.writeShort(tempByteBuffer.length);
+            ba.writeBytes(tempByteBuffer);
+            tempByteBuffer.clear();
             _loc6_++;
         }
     }
-    if (_loc11_ == 17) {
-        writeSegmentPos(_loc2_, 9);
-        _loc2_.writeInt(param1.getAttributeInt("indent", 15));
-        _loc2_.writeByte(param1.getAttributeInt("clickToExpand"));
+    if (type == 17) {
+        writeSegmentPos(ba, 9);
+        ba.writeInt(getAttributeInt(element, "indent", 15));
+        ba.writeByte(getAttributeInt(element, "clickToExpand"));
     }
-    return _loc2_;
+    return ba;
 }
 
-function writeGearData(param1: number, param2: any): ByteArray {
-    var _loc3_: string = null;
-    var _loc4_: Array<any> = [];
-    var _loc5_: number = 0;
-    var _loc6_: number = 0;
-    var _loc7_: number = 0;
+function writeGearData(gearType: number, gear: IGearBase): ByteArray {
+    var controller: string = "";
+    var strArr: Array<string> = [];
+    var strLength: number = 0;
+    var idx: number = 0;
     var _loc9_: any = undefined;
-    var _loc10_: Array<any> = [];
-    var _loc11_: Array<any> = [];
-    var _loc12_: boolean = false;
-    var _loc13_: number = 0;
-    _loc3_ = param2.getAttribute("controller");
-    if (_loc3_) {
-        _loc9_ = controllerCache[_loc3_];
+    var controllerArr: Array<string> = [];
+    var controllerDetails: Array<string> = [];
+    var positionsInPercent: boolean = false;
+    var condition: number = 0;
+    controller = gear.controller;
+    if (controller) {
+        _loc9_ = controllerCache[controller];
         if (_loc9_ == undefined) {
             return null;
         }
-        var _loc8_: ByteArray = new ByteArray();
-        _loc8_.writeShort(_loc9_);
-        if (param1 == 0 || param1 == 8) {
-            _loc3_ = param2.getAttribute("pages");
-            if (_loc3_) {
-                _loc4_ = _loc3_.split(",");
-                _loc5_ = _loc4_.length;
-                if (_loc5_ == 0) {
+        var ba: ByteArray = new ByteArray();
+        ba.writeShort(_loc9_);
+        if (gearType == 0 || gearType == 8) {
+            controller = gear.pages;
+            if (controller) {
+                strArr = controller.split(",");
+                strLength = strArr.length;
+                if (strLength == 0) {
                     return null;
                 }
-                _loc8_.writeShort(_loc5_);
-                _loc6_ = 0;
-                while (_loc6_ < _loc5_) {
-                    writeString(_loc8_, _loc4_[_loc6_], false, false);
-                    _loc6_++;
+                ba.writeShort(strLength);
+                idx = 0;
+                while (idx < strLength) {
+                    writeString(ba, strArr[idx], false, false);
+                    idx++;
                 }
             }
             else {
-                _loc8_.writeShort(0);
+                ba.writeShort(0);
             }
         }
         else {
-            _loc3_ = param2.getAttribute("pages");
-            if (_loc3_) {
-                _loc10_ = _loc3_.split(",");
+            controller = gear.pages;
+            if (controller) {
+                controllerArr = controller.split(",");
             }
             else {
-                _loc10_ = [];
+                controllerArr = [];
             }
-            _loc3_ = param2.getAttribute("values");
-            if (_loc3_) {
-                _loc11_ = _loc3_.split("|");
+            controller = gear.values;
+            if (controller) {
+                controllerDetails = controller.split("|");
             }
             else {
-                _loc11_ = [];
+                controllerDetails = [];
             }
-            _loc5_ = _loc10_.length;
-            _loc8_.writeShort(_loc5_);
-            _loc6_ = 0;
-            while (_loc6_ < _loc5_) {
-                _loc3_ = _loc11_[_loc6_];
-                if (param1 != 6 && param1 != 7 && (!_loc3_ || _loc3_ == "-")) {
-                    writeString(_loc8_, null);
+            strLength = controllerArr.length;
+            ba.writeShort(strLength);
+            idx = 0;
+            while (idx < strLength) {
+                controller = controllerDetails[idx];
+                if (gearType != 6 && gearType != 7 && (!controller || controller == "-")) {
+                    writeString(ba, null);
                 }
                 else {
-                    writeString(_loc8_, _loc10_[_loc6_], false, false);
-                    writeGearValue(param1, _loc3_, _loc8_);
+                    writeString(ba, controllerArr[idx], false, false);
+                    writeGearValue(gearType, controller, ba);
                 }
-                _loc6_++;
+                idx++;
             }
-            _loc3_ = param2.getAttribute("default");
-            if (_loc3_) {
-                _loc8_.writeBoolean(true);
-                writeGearValue(param1, _loc3_, _loc8_);
+            controller = gear.default;
+            if (controller) {
+                ba.writeBoolean(true);
+                writeGearValue(gearType, controller, ba);
             }
             else {
-                _loc8_.writeBoolean(false);
+                ba.writeBoolean(false);
             }
         }
-        if (param2.getAttributeBool("tween")) {
-            _loc8_.writeBoolean(true);
-            _loc8_.writeByte(EaseType.parseEaseType(param2.getAttribute("ease")));
-            _loc8_.writeFloat(param2.getAttributeFloat("duration", 0.3));
-            _loc8_.writeFloat(param2.getAttributeFloat("delay"));
+        if (getAttributeBool(gear, "tween")) {
+            ba.writeBoolean(true);
+            ba.writeByte(EaseType.parseEaseType(gear.ease));
+            ba.writeFloat(getAttributeFloat(gear, "duration", 0.3));
+            ba.writeFloat(getAttributeFloat(gear, "delay"));
         }
         else {
-            _loc8_.writeBoolean(false);
+            ba.writeBoolean(false);
         }
-        if (param1 == 1) {
-            _loc12_ = param2.getAttributeBool("positionsInPercent");
-            _loc8_.writeBoolean(_loc12_);
-            if (_loc12_) {
-                _loc6_ = 0;
-                while (_loc6_ < _loc5_) {
-                    _loc3_ = _loc11_[_loc6_];
-                    if (_loc3_ && _loc3_ != "-") {
-                        writeString(_loc8_, _loc10_[_loc6_], false, false);
-                        _loc4_ = _loc3_.split(",");
-                        _loc8_.writeFloat(parseFloat(_loc4_[2]));
-                        _loc8_.writeFloat(parseFloat(_loc4_[3]));
+        if (gearType == 1) {
+            positionsInPercent = getAttributeBool(gear, "positionsInPercent");
+            ba.writeBoolean(positionsInPercent);
+            if (positionsInPercent) {
+                idx = 0;
+                while (idx < strLength) {
+                    controller = controllerDetails[idx];
+                    if (controller && controller != "-") {
+                        writeString(ba, controllerArr[idx], false, false);
+                        strArr = controller.split(",");
+                        ba.writeFloat(parseFloat(strArr[2]));
+                        ba.writeFloat(parseFloat(strArr[3]));
                     }
-                    _loc6_++;
+                    idx++;
                 }
-                _loc3_ = param2.getAttribute("default");
-                if (_loc3_) {
-                    _loc8_.writeBoolean(true);
-                    _loc4_ = _loc3_.split(",");
-                    _loc8_.writeFloat(parseFloat(_loc4_[2]));
-                    _loc8_.writeFloat(parseFloat(_loc4_[3]));
+                controller = gear.default;
+                if (controller) {
+                    ba.writeBoolean(true);
+                    strArr = controller.split(",");
+                    ba.writeFloat(parseFloat(strArr[2]));
+                    ba.writeFloat(parseFloat(strArr[3]));
                 }
                 else {
-                    _loc8_.writeBoolean(false);
+                    ba.writeBoolean(false);
                 }
             }
         }
-        if (param1 == 8) {
-            _loc13_ = param2.getAttributeInt("condition");
-            _loc8_.writeByte(_loc13_);
+        if (gearType == 8) {
+            condition = getAttributeInt(gear, "condition");
+            ba.writeByte(condition);
         }
-        return _loc8_;
+        return ba;
     }
     return null;
 }
@@ -2619,7 +2651,7 @@ function writeTransitionValue(param1: ByteArray, param2: string, param3: string)
     //  encodeBinaryTransition(param2,param1,writeString);
 }
 
-//   function encodeTransition(param1:String) : String
+//   function encodeTransition(param1:String) : string
 //   {
 //      var _loc2_:any = null;
 //      switch(param1)
@@ -2769,6 +2801,57 @@ function encodeBinaryTransition(param1: string, param2: ByteArray, param3: Funct
     //        param3(param2,this.s);
 }
 
+function writeHitTestImages() {
+    //  var _loc2_:BitmapData = null;
+    //  var _loc3_:BitmapData = null;
+    //  var _loc4_:Matrix = null;
+    var _loc5_: Array<number> = null;
+    var _loc6_: number = 0;
+    var _loc7_: number = 0;
+    var _loc8_: number = 0;
+    var _loc9_: number = 0;
+    for (let hitTestImage of hitTestImages) {
+        // if(hitTestImage)
+        // {
+        //    _loc3_ = new BitmapData(_loc2_.width / 2,_loc2_.height / 2,true,0);
+        //    _loc4_ = new Matrix();
+        //    _loc4_.scale(0.5,0.5);
+        //    _loc3_.draw(_loc2_,_loc4_);
+        //    _loc2_ = _loc3_;
+        //    _loc5_ = _loc2_.getVector(_loc2_.rect);
+        //    _loc6_ = _loc5_.length;
+        //    hitTestData.writeUTF(_loc1_.id);
+        //    hitTestData.writeInt(0);
+        //    hitTestData.writeInt(_loc2_.width);
+        //    hitTestData.writeByte(2);
+        //    hitTestData.writeInt(Math.ceil(_loc6_ / 8));
+        //    _loc2_.dispose();
+        //    _loc7_ = 0;
+        //    _loc8_ = 0;
+        //    _loc9_ = 0;
+        //    while(_loc9_ < _loc6_)
+        //    {
+        //       if((_loc5_[_loc9_] >> 24 & 255) > 10)
+        //       {
+        //          _loc7_ = _loc7_ + (1 << _loc8_);
+        //       }
+        //       _loc8_++;
+        //       if(_loc8_ == 8)
+        //       {
+        //          hitTestData.writeByte(_loc7_);
+        //          _loc7_ = 0;
+        //          _loc8_ = 0;
+        //       }
+        //       _loc9_++;
+        //    }
+        //    if(_loc8_ != 0)
+        //    {
+        //       hitTestData.writeByte(_loc7_);
+        //    }
+        // }
+    }
+}
+
 
 function startSegments(ba: ByteArray, segment: number, bool: boolean): void {
     ba.writeByte(segment);
@@ -2792,8 +2875,7 @@ function writeSegmentPos(ba: ByteArray, pos: number) {
     ba.position = 2 + pos * (_loc4_ ? 2 : 4);
     if (_loc4_) {
         ba.writeShort(position);
-    }
-    else {
+    } else {
         ba.writeInt(position);
     }
     ba.position = position;
@@ -2835,6 +2917,43 @@ function writeCount(ba: ByteArray, position: number, count: number): void {
     ba.position = position;
     ba.writeShort(count);
     ba.position = _loc4_;
+}
+
+function getChildren<U, T>(display: U, name?: string | Array<string>): Array<T> {
+    let children = [];
+    for (let [key, value] of Object.entries(display)) {
+        if (name) { // 指定关键词
+            let flag = false;
+            if (Array.isArray(name)) {
+                flag = name.includes(key);
+            } else {
+                flag = key.includes(name);
+            }
+            if (flag) {
+                if (Array.isArray(value)) {
+                    value.forEach((item) => {
+                        item.type = key;
+                        children.push(item);
+                    })
+                } else {
+                    value.type = key;
+                    children.push(value);
+                }
+            }
+        } else {
+            if (Array.isArray(value)) {
+                value.forEach((item) => {
+                    item.type = key;
+                    children.push(item);
+                })
+            } else {
+                value.type = key;
+                children.push(value);
+            }
+        }
+
+    }
+    return children;
 }
 
 publish();
