@@ -11,3 +11,11 @@
 
 读取package.xml文件解析组件内容 
 
+###  todo 
+- [ ] branches 分支信息发布
+- [ ] skeleton 骨骼动画信息发布
+- [ ] hittest 点击测试信息发布
+
+
+
+
