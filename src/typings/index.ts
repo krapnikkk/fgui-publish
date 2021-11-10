@@ -62,6 +62,7 @@ type ResourceType = IImageResource | IMovieclipResource | IComponentResource;
 interface IComponentFile {
     size: string;
     controller?: IController | IController[];
+    transition?: ITransition | ITransition[];
     displayList: IDisplayList;
     extention?: string;
     initName?: string;
@@ -77,6 +78,46 @@ interface IComponentFile {
     mask?: string;
     reversedMask?: string;
     hitTest?: string;
+}
+
+interface ITransition {
+    name: string;
+    options?: string;
+    autoPlay?: string;
+    autoPlayRepeat?: string;
+    autoPlayDelay?: string;
+    frameRate?: string;
+    item?: ITransitionItem | ITransitionItem[];
+}
+
+interface ITransitionItem {
+    type?: string;
+    time?: string;
+    target?: string;
+    label?: string;
+    tween?: string;
+    duration?: string;
+    ease?: string;
+    repeat?: string;
+    yoyo?: string;
+    label2?: string;
+    startValue?: string;
+    endValue?: string;
+    value?: string;
+    path?: string;
+}
+
+interface ITransitionItemValue {
+    b1?: boolean;
+    b2?: boolean;
+    b3?: boolean;
+    f1?: number;
+    f2?: number;
+    f3?: number;
+    f4?: number;
+    iu?: number;
+    i?: number;
+    s?: string;
 }
 
 interface IDisplayList {
@@ -100,26 +141,27 @@ interface IBaseElement extends IBase {
     fileName?: string;
     xy: string;
     touchable?: string;
-    restrictSize?:string;
-    scale?:string;
-    skew?:string;
-    pivot?:string;
-    anchor?:string;
-    alpha?:string;
-    rotation?:string;
-    visible?:string;
-    grayed?:string;
-    blend?:string;
-    filter?:string;
-    filterData?:string;
-    customData?:string;
-    tooltips?:string;
-    group?:string;
-    pageController?:string,
+    restrictSize?: string;
+    scale?: string;
+    skew?: string;
+    pivot?: string;
+    anchor?: string;
+    alpha?: string;
+    rotation?: string;
+    visible?: string;
+    grayed?: string;
+    blend?: string;
+    filter?: string;
+    filterData?: string;
+    customData?: string;
+    customProperty?: IProperty[] | IProperty;
+    tooltips?: string;
+    group?: string;
+    pageController?: string,
     gearDisplay?: IGearBase;
     gearSize?: IGearBase;
     gearXY?: IGearBase
-    controller?:string;
+    controller?: string;
     relation?: {
         sidePair: string;
         target: string;
@@ -130,47 +172,47 @@ interface IComponentElement extends IBaseElement {
     // 扩展
     Label?: {
         title: string;
-        icon:string;
-        titleColor:string;
+        icon: string;
+        titleColor: string;
     };
     Button?: {
         title?: string;
-        selectedTitle?:string;
-        icon?:string;
-        selectedIcon?:string;
-        titleColor?:string;
-        titleFontSize?:string;
-        controller?:string;
-        page?:string;
-        sound?:string;
-        volume?:string;
-        checked?:string;
+        selectedTitle?: string;
+        icon?: string;
+        selectedIcon?: string;
+        titleColor?: string;
+        titleFontSize?: string;
+        controller?: string;
+        page?: string;
+        sound?: string;
+        volume?: string;
+        checked?: string;
     };
-    Combobox?:{
-        item?:string;
-        visibleItemCount?:string;
-        value?:string;
-        icon?:string;
-        title?:string;
-        titleColor?:string;
-        direction?:string;
-        selectionController?:string;
+    Combobox?: {
+        item?: string;
+        visibleItemCount?: string;
+        value?: string;
+        icon?: string;
+        title?: string;
+        titleColor?: string;
+        direction?: string;
+        selectionController?: string;
     };
-    Slider?:{
-        value?:string;
-        max?:string;
-        min?:string;
+    Slider?: {
+        value?: string;
+        max?: string;
+        min?: string;
     };
-    Scrollbar?:{
+    Scrollbar?: {
     }
-    
+
 }
 
 interface IImageElement extends IBaseElement {
     aspect?: string;
-    color?:string;
-    flip?:string;
-    fillMethod?:string;
+    color?: string;
+    flip?: string;
+    fillMethod?: string;
 }
 
 
@@ -184,12 +226,12 @@ interface IListElement extends IBaseElement {
     scroll: string;
     scrollBarFlags: string;
     item: IListElementItem[];
-    treeView?:string;
+    treeView?: string;
 }
 
-interface IListElementItem{
-    url:string;
-    level:string;
+interface IListElementItem {
+    url: string;
+    level: string;
 }
 
 interface ILoaderElement extends IBaseElement {
@@ -208,9 +250,9 @@ interface IGroupElement extends IBaseElement {
 }
 
 interface IMovieClipElement extends IBaseElement {
-    color?:string;
-    frame?:string;
-    playing?:string;
+    color?: string;
+    frame?: string;
+    playing?: string;
 }
 
 interface IjtaElement extends IBaseElement {
@@ -218,7 +260,7 @@ interface IjtaElement extends IBaseElement {
 }
 
 interface IScrollBarElement extends IBaseElement {
-    
+
 }
 
 interface ITextElement extends IBaseElement {
@@ -228,22 +270,28 @@ interface ITextElement extends IBaseElement {
     autoSize: string;
 }
 
-interface IInpuTextElement extends ITextElement{
-    prompt?:string;
-    restrict?:string;
-    maxLength?:string;
-    keyboardType?:string;
-    password?:string;
+interface IInpuTextElement extends ITextElement {
+    prompt?: string;
+    restrict?: string;
+    maxLength?: string;
+    keyboardType?: string;
+    password?: string;
 }
 
 interface IGearBase {
-    type?:string;
+    type?: string;
     controller: string;
     pages: string;
     default?: string;
     values?: string;
-    ease?:string;
-    condition?:string
+    ease?: string;
+    condition?: string
+}
+
+interface IProperty {
+    target?: string;
+    propertyId?: string;
+    value?: string;
 }
 
 interface IController {

@@ -27,8 +27,9 @@ let controllerCnt = 0,
     displayList: { [key: string]: any } = {};
 const stringMap: { [key: string]: number } = {},
     stringTable: string[] = [],
-    xmlFileMap: { [key: string]: IComponentFile | string } = {},
-    resourceMap: Map<string, IResource> = new Map;
+    xmlFileMap: { [key: string]: IComponentFile | string | Buffer } = {},
+    resourceMap: Map<string, IResource> = new Map,
+    resourceQuote: Map<string, number> = new Map;
 
 const helperIntList: number[] = [];
 const RelationNameToID: { [key: string]: number } = {
@@ -142,6 +143,7 @@ function getFileExtension(projectType: string): string {
 
 function getPackagesResource(resource: IResource): IPackageResource {
     let dependentMap = new Map();
+    // let resourceMap = {};
     let resourceArr = [];
     for (let [key, value] of Object.entries(resource)) {
 
@@ -152,27 +154,28 @@ function getPackagesResource(resource: IResource): IPackageResource {
                 item.file = item.name;
                 // console.log(item.name);
                 item.type = key;
-                resourceArr.push(item);
+
                 resourceMap.set(item.id, item);
-                if (key == "component" || key == "font" || key == "moveclip") { // conponent组件
-                    readFileResource(key, item, dependentMap); // todo 非组件文件也需要被解析
-                } else if (key == "image") {
-                    // spriteMap.set(item.id, item);
-                    spriteMap.push(item)
-                }
+                // if (key == "component" || key == "font" || key == "moveclip") { // conponent组件
+                readFileResource(key, item, dependentMap); // todo 非组件文件也需要被解析
+                // } else if (key == "image") {
+                //     // spriteMap.set(item.id, item);
+                //     spriteMap.push(item)
+                // }
+                resourceArr.unshift(item); // 未被xml引用的资源文件需要剔除
             }
         } else {
             value.file = value.name;
             // console.log(value.name);
             value.type = key;
-            resourceArr.push(value);
             resourceMap.set(value.id, value);
-            if (key == "component" || key == "font" || key == "movieclip") {
-                readFileResource(key, value, dependentMap);
-            } else if (key == "image") {
-                // spriteMap.set(value.id, value);
-                spriteMap.push(value);
-            }
+            // if (key == "component" || key == "font" || key == "movieclip") {
+            readFileResource(key, value, dependentMap);
+            // } else if (key == "image") {
+            //     // spriteMap.set(value.id, value);
+            //     spriteMap.push(value);
+            // }
+            resourceArr.unshift(value);
         }
     }
     // console.log(spriteMap);
@@ -190,18 +193,20 @@ function readFileResource(type: string, component: IComponentResource, dependent
         xmlFileMap[id] = fnt;
         Object.assign(resourceMap.get(id), { data: fnt });
         return;
-
     } else if (type == "movieclip") {
         debugger;
-        let jta = fs.readFileSync(`${basePath}${assetsPath}${pkgName}${path}${name}`).toString();
+        let jta = fs.readFileSync(`${basePath}${assetsPath}${pkgName}${path}${name}`);
         xmlFileMap[id] = jta;
         Object.assign(resourceMap.get(id), { data: jta });
         return;
-    } else {
+    } else if (type == "component") {
         let xml = fs.readFileSync(`${basePath}${assetsPath}${pkgName}${path}${name}`).toString();
         data = parse(xml, xmlOptions).component as IComponentFile;
         xmlFileMap[id] = data;
         Object.assign(resourceMap.get(id), data);
+        resourceQuote.set(id, 1);
+    } else { // todo
+        return;
     }
     // 从package.xml中获取resources，然后从displayList中寻找跨包资源
     let { displayList } = data;
@@ -213,13 +218,15 @@ function readFileResource(type: string, component: IComponentResource, dependent
             if (Array.isArray(value)) {
                 for (let j = 0; j < value.length; j++) {
                     let element = value[j] as IBaseElement;
-                    let { id, name, pkg } = element;
+                    let { id, name, pkg, src } = element;
+                    resourceQuote.set(src, 1);
                     if (pkg) {
                         dependentMap.set(id, name);
                     }
                 }
             } else {
-                let { id, name, pkg } = value as IBaseElement;
+                let { id, name, pkg, src } = value as IBaseElement;
+                resourceQuote.set(src, 1);
                 if (pkg) {
                     dependentMap.set(id, name);
                 }
@@ -287,10 +294,13 @@ function encode(compress: boolean = false): ByteArray {
     writeSegmentPos(ba, 1);
     ba.writeShort(resourceArr.length);
     resourceArr.forEach((element) => {
-        let byteBuffer = writeResourceItem(element);
-        ba.writeInt(byteBuffer.length);
-        ba.writeBytes(byteBuffer);
-        byteBuffer.clear();
+        let { id } = element;
+        if (resourceQuote.has(id)) { // 过滤未被引用资源
+            let byteBuffer = writeResourceItem(element);
+            ba.writeInt(byteBuffer.length);
+            ba.writeBytes(byteBuffer);
+            byteBuffer.clear();
+        }
     })
 
     writeSegmentPos(ba, 2);
@@ -462,7 +472,8 @@ function writeResourceItem(resource: ResourceType): ByteArray {
     }
     value = getAttribute(resource, "id");
     writeString(ba, value);
-    writeString(ba, getAttribute(resource, "name", ""));
+    let name = getAttribute(resource, "name", "").replace(/\.\w+$/, "");
+    writeString(ba, name);
     writeString(ba, getAttribute(resource, "path", ""));
     if (type == FPackageItemType.SOUND || type == FPackageItemType.SWF || type == FPackageItemType.ATLAS || type == FPackageItemType.MISC) {
         writeString(ba, getAttribute(resource, "file", ""));
@@ -504,15 +515,16 @@ function writeResourceItem(resource: ResourceType): ByteArray {
             // todo
             ba.writeBoolean(getAttributeBool(resource, "smoothing", true));
             _loc9_ = xmlFileMap[value] as string;
-            if (_loc9_) { debugger }
-            if (_loc9_) {
-                _loc3_ = writeMovieClipData(value, _loc9_);
-                ba.writeInt(_loc3_.length);
-                ba.writeBytes(_loc3_);
-                _loc3_.clear();
-            } else {
-                ba.writeInt(0);
-            }
+            // if (_loc9_) {
+            //     debugger;
+            //     // _loc3_ = writeMovieClipData(value, _loc9_);
+            //     ba.writeInt(_loc3_.length);
+            //     ba.writeBytes(_loc3_);
+            //     _loc3_.clear();
+            // } else {
+            //     ba.writeInt(0);
+            // }
+            ba.writeInt(0);
             break;
         case FPackageItemType.FONT:
             _loc4_ = xmlFileMap[value] as string;
@@ -709,7 +721,7 @@ function writeGObjectData(value: string, xml: IComponentFile): ByteArray {
         idx = 0;
         while (idx < childrenLen) {
             tempByteArray = addComponent(children[idx]);
-            ba.writeShort(tempByteArray.length);
+            ba.writeShort(tempByteArray.length); // mark
             ba.writeBytes(tempByteArray);
             tempByteArray.clear();
             idx++;
@@ -1335,7 +1347,7 @@ function writeCurve(param1: string, param2: ByteArray): void {
     param2.position = _loc8_;
 }
 
-function writeControllerItem(param1: IBaseElement, ba: ByteArray): void {
+function writeControllerItem(param1: any, ba: ByteArray): void {
     var position: number = ba.position;
     ba.writeShort(0);
     var _loc4_: number = 0;
@@ -1439,15 +1451,15 @@ function addComponent(element: IBaseElement): ByteArray {
     startSegments(ba, _loc13_, true);
     writeSegmentPos(ba, 0);
     ba.writeByte(type);
-    writeString(ba, getAttribute(element,"src"));
-    writeString(ba, getAttribute(element,"pkg"));
-    writeString(ba, getAttribute(element,"id",""));
-    writeString(ba, getAttribute(element,"name",""));
-    _loc4_ = getAttribute(element,"xy");
+    writeString(ba, getAttribute(element, "src"));
+    writeString(ba, getAttribute(element, "pkg"));
+    writeString(ba, getAttribute(element, "id", ""));
+    writeString(ba, getAttribute(element, "name", ""));
+    _loc4_ = getAttribute(element, "xy");
     _loc5_ = _loc4_.split(",");
     ba.writeInt(Number(_loc5_[0]));
     ba.writeInt(Number(_loc5_[1]));
-    _loc4_ = getAttribute(element,"size");
+    _loc4_ = getAttribute(element, "size");
     if (_loc4_) {
         ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
@@ -1456,7 +1468,7 @@ function addComponent(element: IBaseElement): ByteArray {
     } else {
         ba.writeBoolean(false);
     }
-    _loc4_ = getAttribute(element,"restrictSize");
+    _loc4_ = getAttribute(element, "restrictSize");
     if (_loc4_) {
         ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
@@ -1467,7 +1479,7 @@ function addComponent(element: IBaseElement): ByteArray {
     } else {
         ba.writeBoolean(false);
     }
-    _loc4_ = getAttribute(element,"scale");
+    _loc4_ = getAttribute(element, "scale");
     if (_loc4_) {
         ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
@@ -1476,7 +1488,7 @@ function addComponent(element: IBaseElement): ByteArray {
     } else {
         ba.writeBoolean(false);
     }
-    _loc4_ = getAttribute(element,"skew");
+    _loc4_ = getAttribute(element, "skew");
     if (_loc4_) {
         ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
@@ -1485,7 +1497,7 @@ function addComponent(element: IBaseElement): ByteArray {
     } else {
         ba.writeBoolean(false);
     }
-    _loc4_ = getAttribute(element,"pivot");
+    _loc4_ = getAttribute(element, "pivot");
     if (_loc4_) {
         _loc5_ = _loc4_.split(",");
         ba.writeBoolean(true);
@@ -1500,7 +1512,7 @@ function addComponent(element: IBaseElement): ByteArray {
     ba.writeBoolean(getAttributeBool(element, "visible", true));
     ba.writeBoolean(getAttributeBool(element, "touchable", true));
     ba.writeBoolean(getAttributeBool(element, "grayed"));
-    _loc4_ = getAttribute(element,"blend");
+    _loc4_ = getAttribute(element, "blend");
     switch (_loc4_) {
         case "add":
             ba.writeByte(2);
@@ -1520,11 +1532,11 @@ function addComponent(element: IBaseElement): ByteArray {
         default:
             ba.writeByte(0);
     }
-    _loc4_ = getAttribute(element,"filter");
+    _loc4_ = getAttribute(element, "filter");
     if (_loc4_) {
         if (_loc4_ == "color") {
             ba.writeByte(1);
-            _loc4_ = getAttribute(element,"filterData");
+            _loc4_ = getAttribute(element, "filterData");
             _loc5_ = _loc4_.split(",");
             ba.writeFloat(parseFloat(_loc5_[0]));
             ba.writeFloat(parseFloat(_loc5_[1]));
@@ -1537,10 +1549,10 @@ function addComponent(element: IBaseElement): ByteArray {
     } else {
         ba.writeByte(0);
     }
-    writeString(ba, getAttribute(element,"customData"), true);
+    writeString(ba, getAttribute(element, "customData"), true);
     writeSegmentPos(ba, 1);
-    writeString(ba, getAttribute(element,"tooltips"), true);
-    _loc4_ = getAttribute(element,"group");
+    writeString(ba, getAttribute(element, "tooltips"), true);
+    _loc4_ = getAttribute(element, "group");
     if (_loc4_ && displayList[_loc4_] != undefined) {
         ba.writeShort(displayList[_loc4_]);
     } else {
@@ -1570,14 +1582,14 @@ function addComponent(element: IBaseElement): ByteArray {
     writeRelation(relations, ba, false);
     if (objectType == FObjectType.COMPONENT || objectType == FObjectType.LIST) {
         writeSegmentPos(ba, 4);
-        _loc16_ = controllerCache[element.pageController];
+        _loc16_ = controllerCache[getAttribute(element, "pageController")];
         if (_loc16_ != undefined) {
             ba.writeShort(_loc16_);
         }
         else {
             ba.writeShort(-1);
         }
-        _loc4_ = element.controller;
+        _loc4_ = getAttribute(element, "controller");
         if (_loc4_) {
             position = ba.position;
             ba.writeShort(0);
@@ -1609,14 +1621,14 @@ function addComponent(element: IBaseElement): ByteArray {
     writeSegmentPos(ba, 5);
     switch (objectType) {
         case FObjectType.IMAGE:
-            _loc4_ = (element as IImageElement).color;
+            _loc4_ = getAttribute(element, "color");
             if (_loc4_) {
                 ba.writeBoolean(true);
                 writeColorData(ba, _loc4_, false);
             } else {
                 ba.writeBoolean(false);
             }
-            _loc4_ = (element as IImageElement).flip;
+            _loc4_ = getAttribute(element, "flip");
             switch (_loc4_) {
                 case "both":
                     ba.writeByte(3);
@@ -1630,7 +1642,7 @@ function addComponent(element: IBaseElement): ByteArray {
                 default:
                     ba.writeByte(0);
             }
-            _loc4_ = (element as IImageElement).fillMethod;
+            _loc4_ = getAttribute(element, "fillMethod");
             writeFillMethodData(ba, _loc4_);
             if (_loc4_ && _loc4_ != "none") {
                 ba.writeByte(getAttributeInt(element, "fillOrigin"));
@@ -2016,6 +2028,7 @@ function addComponent(element: IBaseElement): ByteArray {
                         ba.writeByte(13);
                         position = ba.position;
                         ba.writeShort(0);
+                        debugger;
                         // _loc28_ = getEnumerator("item");  // todo
                         idx = 0;
                         while (_loc28_.moveNext()) {
@@ -2089,6 +2102,7 @@ function addComponent(element: IBaseElement): ByteArray {
         case FObjectType.LIST:
             _loc4_ = getAttribute(element, "selectionController");
             if (_loc4_) {
+                console.log("controllerCache:", controllerCache);
                 _loc16_ = controllerCache[_loc4_];
                 if (_loc16_ != undefined) {
                     ba.writeShort(_loc16_);
@@ -2107,63 +2121,63 @@ function addComponent(element: IBaseElement): ByteArray {
             tempByteBuffer.clear();
         }
         writeSegmentPos(ba, 8);
-        writeString(ba, getAttribute(element, "defaultItem"));
+        writeString(ba, getAttribute(element, "defaultItem")); // todo autoClearItems
+        let autoClearItems = getAttributeBool(element, "autoClearItems");
         // _loc28_ = element.getEnumerator(element,"item");
         let items = (element as IListElement).item;
-        let itemLen = 0;
         idx = 0;
         helperIntList.length = idx;
         if (items) {
-            let itemLen = items.length;
+            for (let item of items) {
+                if (item) {
+                    _loc29_ = getAttributeInt(item, "level", 0);
+                    helperIntList[idx] = _loc29_;
+                    idx++;
+                }
+            }
         }
-
-        while (idx < itemLen) {
-            let item = items[idx];
-            _loc29_ = getAttributeInt(item, "level", 0);
-            helperIntList[idx] = _loc29_;
-            idx++;
-        }
-
         _loc6_ = 0;
         ba.writeShort(idx);
-        let itemIdx = 0;
-        while (itemIdx < itemLen) {
-            let item = items[itemIdx];
-            itemIdx++;
-            tempByteBuffer = new ByteArray();
-            writeString(tempByteBuffer, getAttribute(item, "url"));
-            if (type == 17) {
-                _loc29_ = helperIntList[_loc6_];
-                if (_loc6_ != idx - 1 && helperIntList[_loc6_ + 1] > _loc29_) {
-                    tempByteBuffer.writeBoolean(true);
-                } else {
-                    tempByteBuffer.writeBoolean(false);
+        if (items && !autoClearItems) {
+            for (let item of items) {
+                if (item) {
+                    tempByteBuffer = new ByteArray();
+                    writeString(tempByteBuffer, getAttribute(item, "url"));
+                    if (type == 17) {
+                        _loc29_ = helperIntList[_loc6_];
+                        if (_loc6_ != idx - 1 && helperIntList[_loc6_ + 1] > _loc29_) {
+                            tempByteBuffer.writeBoolean(true);
+                        } else {
+                            tempByteBuffer.writeBoolean(false);
+                        }
+                        tempByteBuffer.writeByte(_loc29_);
+                    }
+                    writeString(tempByteBuffer, getAttribute(item, "title"), true);
+                    writeString(tempByteBuffer, getAttribute(item, "selectedTitle"), true);
+                    writeString(tempByteBuffer, getAttribute(item, "icon"));
+                    writeString(tempByteBuffer, getAttribute(item, "selectedIcon"));
+                    writeString(tempByteBuffer, getAttribute(item, "name"));
+
+                    _loc4_ = getAttribute(item, "controllers");
+                    if (_loc4_) {
+                        _loc5_ = _loc4_.split(",");
+                        tempByteBuffer.writeShort(_loc5_.length / 2);
+                        _loc6_ = 0;
+                        while (_loc6_ < _loc5_.length) {
+                            writeString(tempByteBuffer, _loc5_[_loc6_]);
+                            writeString(tempByteBuffer, _loc5_[_loc6_ + 1]);
+                            _loc6_ = _loc6_ + 2;
+                        }
+                    } else {
+                        tempByteBuffer.writeShort(0);
+                    }
+                    writeControllerItem(item, tempByteBuffer);
+                    ba.writeShort(tempByteBuffer.length);
+                    ba.writeBytes(tempByteBuffer);
+                    tempByteBuffer.clear();
+                    _loc6_++;
                 }
-                tempByteBuffer.writeByte(_loc29_);
             }
-            writeString(tempByteBuffer, getAttribute(item, "title"), true);
-            writeString(tempByteBuffer, getAttribute(item, "selectedTitle"), true);
-            writeString(tempByteBuffer, getAttribute(item, "icon"));
-            writeString(tempByteBuffer, getAttribute(item, "selectedIcon"));
-            writeString(tempByteBuffer, getAttribute(item, "name"));
-            _loc4_ = getAttribute(item, "controllers");
-            if (_loc4_) {
-                _loc5_ = _loc4_.split(",");
-                tempByteBuffer.writeShort(_loc5_.length / 2);
-                _loc6_ = 0;
-                while (_loc6_ < _loc5_.length) {
-                    writeString(tempByteBuffer, _loc5_[_loc6_]);
-                    writeString(tempByteBuffer, _loc5_[_loc6_ + 1]);
-                    _loc6_ = _loc6_ + 2;
-                }
-            } else {
-                tempByteBuffer.writeShort(0);
-            }
-            writeControllerItem(_loc14_, tempByteBuffer);
-            ba.writeShort(tempByteBuffer.length);
-            ba.writeBytes(tempByteBuffer);
-            tempByteBuffer.clear();
-            _loc6_++;
         }
     }
     if (type == 17) {
@@ -2184,7 +2198,7 @@ function writeGearData(gearType: number, gear: IGearBase): ByteArray {
     var controllerDetails: Array<string> = [];
     var positionsInPercent: boolean = false;
     var condition: number = 0;
-    controller = getAttribute(gear,"controller");
+    controller = getAttribute(gear, "controller");
     if (controller) {
         _loc9_ = controllerCache[controller];
         if (_loc9_ == undefined) {
@@ -2193,7 +2207,7 @@ function writeGearData(gearType: number, gear: IGearBase): ByteArray {
         var ba: ByteArray = new ByteArray();
         ba.writeShort(_loc9_);
         if (gearType == 0 || gearType == 8) {
-            controller = getAttribute(gear,"pages");
+            controller = getAttribute(gear, "pages");
             if (controller) {
                 strArr = controller.split(",");
                 strLength = strArr.length;
@@ -2211,13 +2225,13 @@ function writeGearData(gearType: number, gear: IGearBase): ByteArray {
             }
         }
         else {
-            controller = getAttribute(gear,"pages");
+            controller = getAttribute(gear, "pages");
             if (controller) {
                 controllerArr = controller.split(",");
             } else {
                 controllerArr = [];
             }
-            controller = getAttribute(gear,"values");
+            controller = getAttribute(gear, "values");
             if (controller) {
                 controllerDetails = controller.split("|");
             } else {
@@ -2236,7 +2250,7 @@ function writeGearData(gearType: number, gear: IGearBase): ByteArray {
                 }
                 idx++;
             }
-            controller = getAttribute(gear,"default");
+            controller = getAttribute(gear, "default");
             if (controller) {
                 ba.writeBoolean(true);
                 writeGearValue(gearType, controller, ba);
@@ -2246,7 +2260,7 @@ function writeGearData(gearType: number, gear: IGearBase): ByteArray {
         }
         if (getAttributeBool(gear, "tween")) {
             ba.writeBoolean(true);
-            ba.writeByte(EaseType.parseEaseType(getAttribute(gear,"ease")));
+            ba.writeByte(EaseType.parseEaseType(getAttribute(gear, "ease")));
             ba.writeFloat(getAttributeFloat(gear, "duration", 0.3));
             ba.writeFloat(getAttributeFloat(gear, "delay"));
         }
@@ -2268,7 +2282,7 @@ function writeGearData(gearType: number, gear: IGearBase): ByteArray {
                     }
                     idx++;
                 }
-                controller = gear.default;
+                controller = getAttribute(gear, "default");
                 if (controller) {
                     ba.writeBoolean(true);
                     strArr = controller.split(",");
@@ -2342,52 +2356,49 @@ function writeGearValue(type: number, value: string, ba: ByteArray): void {
 }
 
 function writeMovieClipData(param1: string, param2: any): ByteArray {
-    //  var _loc5_:string = null;
-    //  var _loc6_:Array<any> = [];
-    //  var _loc7_:ByteArray = null;
-    //  var _loc10_:any;
-    //  var _loc11_:number = 0;
-    //  var _loc3_:any = any.attach(param2);
+    var _loc5_: string = null;
+    var _loc6_: Array<any> = [];
+    var _loc7_: ByteArray = null;
+    var _loc10_: any;
+    var _loc11_: number = 0;
+    var _loc3_: any = param2; // todo 读取二进制解析出来
     var _loc4_: ByteArray = new ByteArray();
-    //  startSegments(_loc4_,2,false);
-    //  writeSegmentPos(_loc4_,0);
-    //  _loc4_.writeInt(_loc3_.getAttributeInt("interval"));
-    //  _loc4_.writeBoolean(_loc3_.getAttributeBool("swing"));
-    //  _loc4_.writeInt(_loc3_.getAttributeInt("repeatDelay"));
-    //  writeSegmentPos(_loc4_,1);
-    //  var _loc8_:any = _loc3_.getChild("frames").getEnumerator("frame");
-    //  _loc4_.writeShort(_loc3_.getAttributeInt("frameCount"));
-    //  var _loc9_:number = 0;
-    //  while(_loc8_.moveNext())
-    //  {
-    //     _loc10_ = _loc8_.current;
-    //     _loc5_ = _loc10_.getAttribute("rect");
-    //     _loc6_ = _loc5_.split(",");
-    //     _loc7_ = new ByteArray();
-    //     _loc7_.writeInt(parseInt(_loc6_[0]));
-    //     _loc7_.writeInt(parseInt(_loc6_[1]));
-    //     _loc11_ = parseInt(_loc6_[2]);
-    //     _loc7_.writeInt(_loc11_);
-    //     _loc7_.writeInt(parseInt(_loc6_[3]));
-    //     _loc7_.writeInt(_loc10_.getAttributeInt("addDelay"));
-    //     _loc5_ = _loc10_.getAttribute("sprite");
-    //     if(_loc5_)
-    //     {
-    //        writeString(_loc7_,param1 + "_" + _loc5_);
-    //     }
-    //     else if(_loc11_)
-    //     {
-    //        writeString(_loc7_,param1 + "_" + _loc9_);
-    //     }
-    //     else
-    //     {
-    //        writeString(_loc7_,null);
-    //     }
-    //     _loc4_.writeShort(_loc7_.length);
-    //     _loc4_.writeBytes(_loc7_);
-    //     _loc7_.clear();
-    //     _loc9_++;
-    //  }
+    debugger;
+    startSegments(_loc4_, 2, false);
+    writeSegmentPos(_loc4_, 0);
+    _loc4_.writeInt(_loc3_.getAttributeInt("interval"));
+    _loc4_.writeBoolean(_loc3_.getAttributeBool("swing"));
+    _loc4_.writeInt(_loc3_.getAttributeInt("repeatDelay"));
+    writeSegmentPos(_loc4_, 1);
+    var _loc8_: any = _loc3_.getChild("frames").getEnumerator("frame");
+    _loc4_.writeShort(_loc3_.getAttributeInt("frameCount"));
+    var _loc9_: number = 0;
+    while (_loc8_.moveNext()) {
+        _loc10_ = _loc8_.current;
+        _loc5_ = _loc10_.getAttribute("rect");
+        _loc6_ = _loc5_.split(",");
+        _loc7_ = new ByteArray();
+        _loc7_.writeInt(parseInt(_loc6_[0]));
+        _loc7_.writeInt(parseInt(_loc6_[1]));
+        _loc11_ = parseInt(_loc6_[2]);
+        _loc7_.writeInt(_loc11_);
+        _loc7_.writeInt(parseInt(_loc6_[3]));
+        _loc7_.writeInt(_loc10_.getAttributeInt("addDelay"));
+        _loc5_ = _loc10_.getAttribute("sprite");
+        if (_loc5_) {
+            writeString(_loc7_, param1 + "_" + _loc5_);
+        }
+        else if (_loc11_) {
+            writeString(_loc7_, param1 + "_" + _loc9_);
+        }
+        else {
+            writeString(_loc7_, null);
+        }
+        _loc4_.writeShort(_loc7_.length);
+        _loc4_.writeBytes(_loc7_);
+        _loc7_.clear();
+        _loc9_++;
+    }
     return _loc4_;
 }
 
