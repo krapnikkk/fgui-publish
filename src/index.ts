@@ -63,7 +63,7 @@ const dependentElements = ["image", "component", "movieclip"];
 let binaryFormat = false,
     projectType = ProjectType.UNITY,
     pkgId = "",
-    pkgName = "Basics",
+    pkgName = "test",
     version: number = 2,
     spriteMap: any[] = [];
 let hitTestData = new ByteArray();
@@ -232,7 +232,7 @@ function readFileResource(type: string, component: IComponentResource, dependent
                 }
             }
         } else {
-            console.log(key);
+            console.log("readFileResource:",key);
         }
     }
 }
@@ -296,6 +296,7 @@ function encode(compress: boolean = false): ByteArray {
     resourceArr.forEach((element) => {
         let { id } = element;
         if (resourceQuote.has(id)) { // 过滤未被引用资源
+            debugger;
             let byteBuffer = writeResourceItem(element);
             ba.writeInt(byteBuffer.length);
             ba.writeBytes(byteBuffer);
@@ -2956,6 +2957,9 @@ function writeSegmentPos(ba: ByteArray, pos: number) {
 
 function writeString(ba: ByteArray, str: string, param3: boolean = false, param4: boolean = true): void {
     let value;
+    if(!str){
+        debugger;
+    }
     if (param4) {
         if (!str) {
             ba.writeShort(65534);

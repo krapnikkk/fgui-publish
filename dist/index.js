@@ -505,6 +505,17 @@ FObjectType.NAME_PREFIX = {
     "ScrollBar": "scrollbar"
 };
 
+class FButton {
+}
+FButton.COMMON = "Common";
+FButton.CHECK = "Check";
+FButton.RADIO = "Radio";
+FButton.UP = "up";
+FButton.DOWN = "down";
+FButton.OVER = "over";
+FButton.SELECTED_OVER = "selectedOver";
+FButton.DISABLED = "disabled";
+FButton.SELECTED_DISABLED = "selectedDisabled";
 class FPackageItemType {
 }
 FPackageItemType.FOLDER = "folder";
@@ -630,6 +641,12 @@ EaseType.easeTypeMap = {
     "Back.Out": 26,
     "Back.InOut": 27
 };
+class CurveType {
+}
+CurveType.CRSpline = 0;
+CurveType.Bezier = 1;
+CurveType.CubicBezier = 2;
+CurveType.Straight = 3;
 
 process.on('uncaughtException', function (e) {
     debugger;
@@ -637,7 +654,7 @@ process.on('uncaughtException', function (e) {
 });
 const compress = false, basePath = "./UIProject/", projectName = "example", extName = ".fairy", packageName = "package.xml", assetsPath = "assets/", targetPath = "./output";
 let controllerCnt = 0, controllerCache = {}, displayList = {};
-const stringMap = {}, stringTable = [], xmlFileMap = {}, resourceMap = new Map;
+const stringMap = {}, stringTable = [], xmlFileMap = {}, resourceMap = new Map, resourceQuote = new Map;
 const helperIntList = [];
 const RelationNameToID = {
     "left-left": 0,
@@ -666,7 +683,7 @@ const RelationNameToID = {
     "bottomext-bottom": 23
 };
 const dependentElements = ["image", "component", "movieclip"];
-let projectType = ProjectType.UNITY, pkgId = "", pkgName = "Basics", version = 2, spriteMap = new Map();
+let projectType = ProjectType.UNITY, pkgId = "", pkgName = "test", version = 2, spriteMap = [];
 let hitTestData = new ByteArray();
 const xmlOptions = {
     attributeNamePrefix: "",
@@ -746,58 +763,73 @@ function getPackagesResource(resource) {
         if (Array.isArray(value)) {
             for (let i = 0; i < value.length; i++) {
                 let item = value[i];
+                item.file = item.name;
                 item.type = key;
-                resourceArr.push(item);
                 resourceMap.set(item.id, item);
-                if (key == "component") {
-                    readXMLResource(item, dependentMap);
-                }
-                else if (key == "image") {
-                    spriteMap.set(item.id, item);
-                }
+                readFileResource(key, item, dependentMap);
+                resourceArr.unshift(item);
             }
         }
         else {
+            value.file = value.name;
             value.type = key;
-            resourceArr.push(value);
             resourceMap.set(value.id, value);
-            if (key == "component") {
-                readXMLResource(value, dependentMap);
-            }
-            else if (key == "image") {
-                spriteMap.set(value.id, value);
-            }
+            readFileResource(key, value, dependentMap);
+            resourceArr.unshift(value);
         }
     }
-    console.log(spriteMap);
     return { dependentMap, resourceArr };
 }
-function readXMLResource(component, dependentMap) {
+function readFileResource(type, component, dependentMap) {
     let { name, path, id } = component;
     name = encodeHTML(name);
-    let xml = fs__default["default"].readFileSync(`${basePath}${assetsPath}${pkgName}${path}${name}`).toString();
-    let data = fastXmlParser.parse(xml, xmlOptions).component;
-    xmlFileMap[id] = data;
-    Object.assign(resourceMap.get(id), data);
+    let data;
+    if (type == "font") {
+        let fnt = fs__default["default"].readFileSync(`${basePath}${assetsPath}${pkgName}${path}${name}`).toString();
+        xmlFileMap[id] = fnt;
+        Object.assign(resourceMap.get(id), { data: fnt });
+        return;
+    }
+    else if (type == "movieclip") {
+        debugger;
+        let jta = fs__default["default"].readFileSync(`${basePath}${assetsPath}${pkgName}${path}${name}`);
+        xmlFileMap[id] = jta;
+        Object.assign(resourceMap.get(id), { data: jta });
+        return;
+    }
+    else if (type == "component") {
+        let xml = fs__default["default"].readFileSync(`${basePath}${assetsPath}${pkgName}${path}${name}`).toString();
+        data = fastXmlParser.parse(xml, xmlOptions).component;
+        xmlFileMap[id] = data;
+        Object.assign(resourceMap.get(id), data);
+        resourceQuote.set(id, 1);
+    }
+    else {
+        return;
+    }
     let { displayList } = data;
-    console.log(data);
     for (let [key, value] of Object.entries(displayList)) {
         if (dependentElements.includes(key)) {
             if (Array.isArray(value)) {
                 for (let j = 0; j < value.length; j++) {
                     let element = value[j];
-                    let { id, name, pkg } = element;
+                    let { id, name, pkg, src } = element;
+                    resourceQuote.set(src, 1);
                     if (pkg) {
                         dependentMap.set(id, name);
                     }
                 }
             }
             else {
-                let { id, name, pkg } = value;
+                let { id, name, pkg, src } = value;
+                resourceQuote.set(src, 1);
                 if (pkg) {
                     dependentMap.set(id, name);
                 }
             }
+        }
+        else {
+            console.log("readFileResource:", key);
         }
     }
 }
@@ -805,17 +837,20 @@ function encode(compress = false) {
     let ba = new ByteArray();
     let ba2 = new ByteArray();
     let i = 0;
+    let itemId = "";
+    var atlasId = "";
+    var binIndex = 0;
     let str = "";
     var pos = 0;
     var len = 0;
     let longStrings;
     let cntPos = 0;
-    startSegments(ba, 6, false);
-    writeSegmentPos(ba, 0);
     console.log("packageDescription");
     let xml = fs__default["default"].readFileSync(`${basePath}${assetsPath}${pkgName}/${packageName}`).toString();
     let packageDescription = fastXmlParser.parse(xml, xmlOptions).packageDescription;
     let resources = packageDescription.resources;
+    startSegments(ba, 6, false);
+    writeSegmentPos(ba, 0);
     let { dependentMap, resourceArr } = getPackagesResource(resources);
     ba.writeShort(dependentMap.size);
     dependentMap.forEach(([id, name]) => {
@@ -825,17 +860,60 @@ function encode(compress = false) {
     ba.writeShort(0);
     writeSegmentPos(ba, 1);
     ba.writeShort(resourceArr.length);
-    console.log(resourceArr);
     resourceArr.forEach((element) => {
-        let byteBuffer = writeResourceItem(element);
-        ba.writeInt(byteBuffer.length);
-        ba.writeBytes(byteBuffer);
-        byteBuffer.clear();
+        let { id } = element;
+        if (resourceQuote.has(id)) {
+            debugger;
+            let byteBuffer = writeResourceItem(element);
+            ba.writeInt(byteBuffer.length);
+            ba.writeBytes(byteBuffer);
+            byteBuffer.clear();
+        }
     });
     writeSegmentPos(ba, 2);
-    let cnt = spriteMap.size;
+    let cnt = 0;
     ba.writeShort(cnt);
     i = 0;
+    let arr = [];
+    while (i < cnt) {
+        arr = spriteMap[i];
+        ba2 = new ByteArray();
+        itemId = arr[0];
+        writeString(ba2, itemId);
+        binIndex = parseInt(arr[1]);
+        if (binIndex >= 0) {
+            atlasId = "atlas" + binIndex;
+        }
+        else {
+            pos = itemId.indexOf("_");
+            if (pos == -1) {
+                atlasId = "atlas_" + itemId;
+            }
+            else {
+                atlasId = "atlas_" + itemId.substring(0, pos);
+            }
+        }
+        writeString(ba2, atlasId);
+        ba2.writeInt(arr[2]);
+        ba2.writeInt(arr[3]);
+        ba2.writeInt(arr[4]);
+        ba2.writeInt(arr[5]);
+        ba2.writeBoolean(arr[6]);
+        if (arr[7] != undefined && (arr[7] != 0 || arr[8] != 0 || arr[9] != arr[4] || arr[10] != arr[5])) {
+            ba2.writeBoolean(true);
+            ba2.writeInt(arr[7]);
+            ba2.writeInt(arr[8]);
+            ba2.writeInt(arr[9]);
+            ba2.writeInt(arr[10]);
+        }
+        else {
+            ba2.writeBoolean(false);
+        }
+        ba.writeShort(ba2.length);
+        ba.writeBytes(ba2);
+        ba2.clear();
+        i++;
+    }
     if (hitTestData.length > 0) {
         writeSegmentPos(ba, 3);
         ba2 = hitTestData;
@@ -904,7 +982,7 @@ function writeResourceItem(resource) {
     let _loc5_ = [];
     let _loc6_ = 0;
     let value = "";
-    let _loc9_ = null;
+    let _loc9_;
     let _loc10_ = "";
     let ba = new ByteArray();
     let type = resource.type;
@@ -936,27 +1014,28 @@ function writeResourceItem(resource) {
         default:
             ba.writeByte(8);
     }
-    value = resource["id"];
+    value = getAttribute(resource, "id");
     writeString(ba, value);
-    writeString(ba, resource.name || "");
-    writeString(ba, resource.path || "");
+    let name = getAttribute(resource, "name", "").replace(/\.\w+$/, "");
+    writeString(ba, name);
+    writeString(ba, getAttribute(resource, "path", ""));
     if (type == FPackageItemType.SOUND || type == FPackageItemType.SWF || type == FPackageItemType.ATLAS || type == FPackageItemType.MISC) {
-        writeString(ba, resource.file);
+        writeString(ba, getAttribute(resource, "file", ""));
     }
     else {
         writeString(ba, null);
     }
-    ba.writeBoolean(Boolean(resource.exported));
-    _loc4_ = resource.size || "";
+    ba.writeBoolean(getAttributeBool(resource, "exported"));
+    _loc4_ = getAttribute(resource, "size", "");
     _loc5_ = _loc4_.split(",");
     ba.writeInt(parseInt(_loc5_[0]));
     ba.writeInt(parseInt(_loc5_[1]));
     switch (type) {
         case FPackageItemType.IMAGE:
-            _loc4_ = resource.scale;
+            _loc4_ = getAttribute(resource, "scale");
             if (_loc4_ == "9grid") {
                 ba.writeByte(1);
-                _loc4_ = resource.scale9grid;
+                _loc4_ = getAttribute(resource, "scale9grid");
                 if (_loc4_) {
                     _loc5_ = _loc4_.split(",");
                     ba.writeInt(parseInt(_loc5_[0]));
@@ -970,7 +1049,7 @@ function writeResourceItem(resource) {
                     ba.writeInt(0);
                     ba.writeInt(0);
                 }
-                ba.writeInt(+resource.gridTile);
+                ba.writeInt(getAttributeInt(resource, "gridTile"));
             }
             else if (_loc4_ == "tile") {
                 ba.writeByte(2);
@@ -978,14 +1057,24 @@ function writeResourceItem(resource) {
             else {
                 ba.writeByte(0);
             }
-            ba.writeBoolean(Boolean(resource.smoothing));
+            ba.writeBoolean(getAttributeBool(resource, "smoothing", true));
             break;
         case FPackageItemType.MOVIECLIP:
-            ba.writeBoolean(Boolean(resource.smoothing));
+            ba.writeBoolean(getAttributeBool(resource, "smoothing", true));
             _loc9_ = xmlFileMap[value];
             ba.writeInt(0);
             break;
         case FPackageItemType.FONT:
+            _loc4_ = xmlFileMap[value];
+            if (_loc4_) {
+                _loc3_ = writeFontData(value, _loc4_);
+                ba.writeInt(_loc3_.length);
+                ba.writeBytes(_loc3_);
+                _loc3_.clear();
+            }
+            else {
+                ba.writeInt(0);
+            }
             break;
         case FPackageItemType.COMPONENT:
             _loc9_ = xmlFileMap[value];
@@ -1065,6 +1154,7 @@ function writeGObjectData(value, xml) {
     var _loc9_ = null;
     var tempByteArray = null;
     var position = 0;
+    var child = null;
     var ba = new ByteArray();
     controllerCache = {};
     controllerCnt = 0;
@@ -1081,11 +1171,11 @@ function writeGObjectData(value, xml) {
     }
     startSegments(ba, 8, false);
     writeSegmentPos(ba, 0);
-    str = xml.size || "";
+    str = getAttribute(xml, "size", "");
     strArr = str.split(",");
     ba.writeInt(parseInt(strArr[0]));
     ba.writeInt(parseInt(strArr[1]));
-    str = xml.restrictSize;
+    str = getAttribute(xml, "restrictSize");
     if (str) {
         strArr = str.split(",");
         ba.writeBoolean(true);
@@ -1097,18 +1187,18 @@ function writeGObjectData(value, xml) {
     else {
         ba.writeBoolean(false);
     }
-    str = xml.pivot;
+    str = getAttribute(xml, "pivot");
     if (str) {
         strArr = str.split(",");
         ba.writeBoolean(true);
         ba.writeFloat(parseFloat(strArr[0]));
         ba.writeFloat(parseFloat(strArr[1]));
-        ba.writeBoolean(xml.anchor == "true");
+        ba.writeBoolean(getAttributeBool(xml, "anchor"));
     }
     else {
         ba.writeBoolean(false);
     }
-    str = xml.margin;
+    str = getAttribute(xml, "margin");
     if (str) {
         strArr = str.split(",");
         ba.writeBoolean(true);
@@ -1120,17 +1210,19 @@ function writeGObjectData(value, xml) {
     else {
         ba.writeBoolean(false);
     }
-    str = xml.overflow;
+    var hasScroll = false;
+    str = getAttribute(xml, "overflow");
     if (str == "hidden") {
         ba.writeByte(1);
     }
     else if (str == "scroll") {
         ba.writeByte(2);
+        hasScroll = true;
     }
     else {
         ba.writeByte(0);
     }
-    str = xml.clipSoftness;
+    str = getAttribute(xml, "clipSoftness");
     if (str) {
         strArr = str.split(",");
         ba.writeBoolean(true);
@@ -1146,32 +1238,21 @@ function writeGObjectData(value, xml) {
     ba.writeShort(0);
     var controllers = xml.controller;
     if (controllers) {
-        let controllerIdx = 0, controllerTotal = 0;
         if (Array.isArray(controllers)) {
             for (let controller of controllers) {
-                controllerIdx = 0;
-                controllerTotal = controller.pages.split(",").length / 2;
-                while (controllerIdx < controllerTotal) {
-                    tempByteArray = writeControllerData(controller);
-                    ba.writeShort(tempByteArray.length);
-                    ba.writeBytes(tempByteArray);
-                    tempByteArray.clear();
-                    controllerIdx++;
-                    childrenLen++;
-                }
-            }
-        }
-        else {
-            controllerIdx = 0;
-            controllerTotal = controllers.pages.split(",").length / 2;
-            while (controllerIdx < controllerTotal) {
-                tempByteArray = writeControllerData(controllers);
+                tempByteArray = writeControllerData(controller);
                 ba.writeShort(tempByteArray.length);
                 ba.writeBytes(tempByteArray);
                 tempByteArray.clear();
-                controllerIdx++;
                 childrenLen++;
             }
+        }
+        else {
+            tempByteArray = writeControllerData(controllers);
+            ba.writeShort(tempByteArray.length);
+            ba.writeBytes(tempByteArray);
+            tempByteArray.clear();
+            childrenLen++;
         }
     }
     writeCount(ba, position, childrenLen);
@@ -1235,6 +1316,116 @@ function writeGObjectData(value, xml) {
     childrenLen = 0;
     position = ba.position;
     ba.writeShort(0);
+    let transitions = xml.transition;
+    if (transitions) {
+        if (Array.isArray(transitions)) {
+            for (let transition of transitions) {
+                tempByteArray = writeTransitionData(transition);
+                ba.writeShort(tempByteArray.length);
+                ba.writeBytes(tempByteArray);
+                tempByteArray.clear();
+                childrenLen++;
+            }
+        }
+        else {
+            tempByteArray = writeTransitionData(transitions);
+            ba.writeShort(tempByteArray.length);
+            ba.writeBytes(tempByteArray);
+            tempByteArray.clear();
+            childrenLen++;
+        }
+    }
+    writeCount(ba, position, childrenLen);
+    var extention = getAttribute(xml, "extention");
+    if (extention) {
+        writeSegmentPos(ba, 6);
+        child = xml.extention;
+        if (!child) {
+            debugger;
+        }
+        switch (extention) {
+            case FObjectType.EXT_LABEL:
+                break;
+            case FObjectType.EXT_BUTTON:
+                str = getAttribute(child, "mode");
+                if (str == FButton.CHECK) {
+                    ba.writeByte(1);
+                }
+                else if (str == FButton.RADIO) {
+                    ba.writeByte(2);
+                }
+                else {
+                    ba.writeByte(0);
+                }
+                writeString(ba, getAttribute(child, "sound"));
+                ba.writeFloat(getAttributeInt(child, "volume", 100) / 100);
+                str = getAttribute(child, "downEffect", "none");
+                if (str == "dark") {
+                    ba.writeByte(1);
+                }
+                else if (str == "scale") {
+                    ba.writeByte(2);
+                }
+                else {
+                    ba.writeByte(0);
+                }
+                ba.writeFloat(getAttributeFloat(child, "downEffectValue", 0.8));
+                break;
+            case FObjectType.EXT_COMBOBOX:
+                writeString(ba, getAttribute(child, "dropdown"));
+                break;
+            case FObjectType.EXT_PROGRESS_BAR:
+                str = getAttribute(child, "titleType");
+                switch (str) {
+                    case "percent":
+                        ba.writeByte(0);
+                        break;
+                    case "valueAndmax":
+                        ba.writeByte(1);
+                        break;
+                    case "value":
+                        ba.writeByte(2);
+                        break;
+                    case "max":
+                        ba.writeByte(3);
+                        break;
+                    default:
+                        ba.writeByte(0);
+                }
+                ba.writeBoolean(getAttributeBool(child, "reverse"));
+                break;
+            case FObjectType.EXT_SLIDER:
+                str = getAttribute(child, "titleType");
+                switch (str) {
+                    case "percent":
+                        ba.writeByte(0);
+                        break;
+                    case "valueAndmax":
+                        ba.writeByte(1);
+                        break;
+                    case "value":
+                        ba.writeByte(2);
+                        break;
+                    case "max":
+                        ba.writeByte(3);
+                        break;
+                    default:
+                        ba.writeByte(0);
+                }
+                ba.writeBoolean(getAttributeBool(child, "reverse"));
+                ba.writeBoolean(getAttributeBool(child, "wholeNumbers"));
+                ba.writeBoolean(getAttributeBool(child, "changeOnClick", true));
+                break;
+            case FObjectType.EXT_SCROLLBAR:
+                ba.writeBoolean(getAttributeBool(child, "fixedGripSize"));
+        }
+    }
+    if (hasScroll) {
+        writeSegmentPos(ba, 7);
+        tempByteArray = writeScrollData(xml);
+        ba.writeBytes(tempByteArray);
+        tempByteArray.clear();
+    }
     return ba;
 }
 function writeScrollData(element) {
@@ -1532,9 +1723,207 @@ function writeRelation(relations, ba, param3) {
         }
     }
 }
-function writeControllerItem(param1, ba) {
-    ba.position;
+function writeTransitionData(transion) {
+    var tempByteArray = null;
+    var value;
+    var idx = 0;
+    var position = 0;
+    var time;
+    var type;
+    var _loc13_;
+    var ba = new ByteArray();
+    writeString(ba, getAttribute(transion, "name"));
+    ba.writeInt(getAttributeInt(transion, "options"));
+    ba.writeBoolean(getAttributeBool(transion, "autoPlay"));
+    ba.writeInt(getAttributeInt(transion, "autoPlayRepeat", 1));
+    ba.writeFloat(getAttributeFloat(transion, "autoPlayDelay"));
+    value = getAttribute(transion, "frameRate");
+    if (value) {
+        time = 1 / parseInt(value);
+    }
+    else {
+        time = 1 / 24;
+    }
+    position = ba.position;
     ba.writeShort(0);
+    idx = 0;
+    let items = transion.item;
+    if (items) {
+        if (Array.isArray(items)) {
+            for (let item of items) {
+                tempByteArray = new ByteArray();
+                startSegments(tempByteArray, 4, true);
+                writeSegmentPos(tempByteArray, 0);
+                type = getAttribute(item, "type");
+                writeTransitionTypeData(tempByteArray, type);
+                tempByteArray.writeFloat(getAttributeInt(item, "time") * time);
+                value = getAttribute(item, "target");
+                if (!value) {
+                    tempByteArray.writeShort(-1);
+                }
+                else {
+                    _loc13_ = displayList[value];
+                    if (_loc13_ == undefined) {
+                        tempByteArray.clear();
+                        continue;
+                    }
+                    tempByteArray.writeShort(Number(_loc13_));
+                }
+                writeString(tempByteArray, getAttribute(item, "label"));
+                value = getAttribute(item, "endValue");
+                if (getAttributeBool(item, "tween") && value != null) {
+                    tempByteArray.writeBoolean(true);
+                    writeSegmentPos(tempByteArray, 1);
+                    tempByteArray.writeFloat(getAttributeInt(item, "duration") * time);
+                    tempByteArray.writeByte(EaseType.parseEaseType(getAttribute(item, "ease")));
+                    tempByteArray.writeInt(getAttributeInt(item, "repeat"));
+                    tempByteArray.writeBoolean(getAttributeBool(item, "yoyo"));
+                    writeString(tempByteArray, getAttribute(item, "label2"));
+                    writeSegmentPos(tempByteArray, 2);
+                    value = getAttribute(item, "startValue");
+                    writeTransitionValue(tempByteArray, type, value);
+                    writeSegmentPos(tempByteArray, 3);
+                    value = getAttribute(item, "endValue");
+                    writeTransitionValue(tempByteArray, type, value);
+                    value = getAttribute(item, "path");
+                    writeCurve(value, tempByteArray);
+                }
+                else {
+                    tempByteArray.writeBoolean(false);
+                    writeSegmentPos(tempByteArray, 2);
+                    value = getAttribute(item, "value");
+                    if (value == null) {
+                        value = getAttribute(item, "startValue");
+                    }
+                    writeTransitionValue(tempByteArray, type, value);
+                }
+                ba.writeShort(tempByteArray.length);
+                ba.writeBytes(tempByteArray);
+                tempByteArray.clear();
+                idx++;
+            }
+        }
+        else {
+            tempByteArray = new ByteArray();
+            startSegments(tempByteArray, 4, true);
+            writeSegmentPos(tempByteArray, 0);
+            type = getAttribute(items, "type");
+            writeTransitionTypeData(tempByteArray, type);
+            tempByteArray.writeFloat(getAttributeInt(items, "time") * time);
+            value = getAttribute(items, "target");
+            if (!value) {
+                tempByteArray.writeShort(-1);
+            }
+            else {
+                _loc13_ = displayList[value];
+                if (_loc13_ == undefined) {
+                    tempByteArray.clear();
+                    debugger;
+                }
+                tempByteArray.writeShort(Number(_loc13_));
+            }
+            writeString(tempByteArray, getAttribute(items, "label"));
+            value = getAttribute(items, "endValue");
+            if (getAttributeBool(items, "tween") && value != null) {
+                tempByteArray.writeBoolean(true);
+                writeSegmentPos(tempByteArray, 1);
+                tempByteArray.writeFloat(getAttributeInt(items, "duration") * time);
+                tempByteArray.writeByte(EaseType.parseEaseType(getAttribute(items, "ease")));
+                tempByteArray.writeInt(getAttributeInt(items, "repeat"));
+                tempByteArray.writeBoolean(getAttributeBool(items, "yoyo"));
+                writeString(tempByteArray, getAttribute(items, "label2"));
+                writeSegmentPos(tempByteArray, 2);
+                value = getAttribute(items, "startValue");
+                writeTransitionValue(tempByteArray, type, value);
+                writeSegmentPos(tempByteArray, 3);
+                value = getAttribute(items, "endValue");
+                writeTransitionValue(tempByteArray, type, value);
+                value = getAttribute(items, "path");
+                writeCurve(value, tempByteArray);
+            }
+            else {
+                tempByteArray.writeBoolean(false);
+                writeSegmentPos(tempByteArray, 2);
+                value = getAttribute(items, "value");
+                if (value == null) {
+                    value = getAttribute(items, "startValue");
+                }
+                writeTransitionValue(tempByteArray, type, value);
+            }
+            ba.writeShort(tempByteArray.length);
+            ba.writeBytes(tempByteArray);
+            tempByteArray.clear();
+            idx++;
+        }
+    }
+    writeCount(ba, position, idx);
+    return ba;
+}
+function writeCurve(param1, param2) {
+    var _loc9_ = 0;
+    if (!param1) {
+        param2.writeInt(0);
+        return;
+    }
+    var _loc3_ = param2.position;
+    param2.writeInt(0);
+    var _loc4_ = param1.split(",");
+    var _loc5_ = _loc4_.length;
+    var _loc6_ = 0;
+    var _loc7_ = 0;
+    while (_loc7_ < _loc5_) {
+        _loc6_++;
+        _loc9_ = parseInt(_loc4_[_loc7_++]);
+        param2.writeByte(_loc9_);
+        switch (_loc9_) {
+            case CurveType.Bezier:
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                continue;
+            case CurveType.CubicBezier:
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                _loc7_++;
+                continue;
+            default:
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                param2.writeFloat(parseFloat(_loc4_[_loc7_++]));
+                continue;
+        }
+    }
+    var _loc8_ = param2.position;
+    param2.position = _loc3_;
+    param2.writeInt(_loc6_);
+    param2.position = _loc8_;
+}
+function writeControllerItem(param1, ba) {
+    var position = ba.position;
+    ba.writeShort(0);
+    var _loc4_ = 0;
+    let propertys = param1.customProperty;
+    if (propertys) {
+        if (Array.isArray(propertys)) {
+            for (let property of propertys) {
+                writeString(ba, getAttribute(property, "target"));
+                ba.writeShort(getAttributeInt(property, "propertyId"));
+                writeString(ba, getAttribute(property, "value"), true, true);
+                _loc4_++;
+            }
+        }
+        else {
+            writeString(ba, getAttribute(propertys, "target"));
+            ba.writeShort(getAttributeInt(propertys, "propertyId"));
+            writeString(ba, getAttribute(propertys, "value"), true, true);
+            _loc4_++;
+        }
+    }
+    writeCount(ba, position, _loc4_);
 }
 function addComponent(element) {
     var tempByteBuffer;
@@ -1546,7 +1935,6 @@ function addComponent(element) {
     var position = 0;
     var type = 0;
     var _loc13_ = 0;
-    var _loc14_;
     var gearType = 0;
     var _loc16_ = undefined;
     var _loc17_ = 0;
@@ -1620,15 +2008,15 @@ function addComponent(element) {
     startSegments(ba, _loc13_, true);
     writeSegmentPos(ba, 0);
     ba.writeByte(type);
-    writeString(ba, element.src);
-    writeString(ba, element.pkg);
-    writeString(ba, element.id || "");
-    writeString(ba, element.name || "");
-    _loc4_ = element.xy;
+    writeString(ba, getAttribute(element, "src"));
+    writeString(ba, getAttribute(element, "pkg"));
+    writeString(ba, getAttribute(element, "id", ""));
+    writeString(ba, getAttribute(element, "name", ""));
+    _loc4_ = getAttribute(element, "xy");
     _loc5_ = _loc4_.split(",");
     ba.writeInt(Number(_loc5_[0]));
     ba.writeInt(Number(_loc5_[1]));
-    _loc4_ = element.size;
+    _loc4_ = getAttribute(element, "size");
     if (_loc4_) {
         ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
@@ -1638,7 +2026,7 @@ function addComponent(element) {
     else {
         ba.writeBoolean(false);
     }
-    _loc4_ = element.restrictSize;
+    _loc4_ = getAttribute(element, "restrictSize");
     if (_loc4_) {
         ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
@@ -1650,7 +2038,7 @@ function addComponent(element) {
     else {
         ba.writeBoolean(false);
     }
-    _loc4_ = element.scale;
+    _loc4_ = getAttribute(element, "scale");
     if (_loc4_) {
         ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
@@ -1660,7 +2048,7 @@ function addComponent(element) {
     else {
         ba.writeBoolean(false);
     }
-    _loc4_ = element.skew;
+    _loc4_ = getAttribute(element, "skew");
     if (_loc4_) {
         ba.writeBoolean(true);
         _loc5_ = _loc4_.split(",");
@@ -1670,7 +2058,7 @@ function addComponent(element) {
     else {
         ba.writeBoolean(false);
     }
-    _loc4_ = element.pivot;
+    _loc4_ = getAttribute(element, "pivot");
     if (_loc4_) {
         _loc5_ = _loc4_.split(",");
         ba.writeBoolean(true);
@@ -1686,7 +2074,7 @@ function addComponent(element) {
     ba.writeBoolean(getAttributeBool(element, "visible", true));
     ba.writeBoolean(getAttributeBool(element, "touchable", true));
     ba.writeBoolean(getAttributeBool(element, "grayed"));
-    _loc4_ = element.blend;
+    _loc4_ = getAttribute(element, "blend");
     switch (_loc4_) {
         case "add":
             ba.writeByte(2);
@@ -1706,11 +2094,11 @@ function addComponent(element) {
         default:
             ba.writeByte(0);
     }
-    _loc4_ = element.filter;
+    _loc4_ = getAttribute(element, "filter");
     if (_loc4_) {
         if (_loc4_ == "color") {
             ba.writeByte(1);
-            _loc4_ = element.filterData;
+            _loc4_ = getAttribute(element, "filterData");
             _loc5_ = _loc4_.split(",");
             ba.writeFloat(parseFloat(_loc5_[0]));
             ba.writeFloat(parseFloat(_loc5_[1]));
@@ -1724,10 +2112,10 @@ function addComponent(element) {
     else {
         ba.writeByte(0);
     }
-    writeString(ba, element.customData, true);
+    writeString(ba, getAttribute(element, "customData"), true);
     writeSegmentPos(ba, 1);
-    writeString(ba, element.tooltips, true);
-    _loc4_ = element.group;
+    writeString(ba, getAttribute(element, "tooltips"), true);
+    _loc4_ = getAttribute(element, "group");
     if (_loc4_ && displayList[_loc4_] != undefined) {
         ba.writeShort(displayList[_loc4_]);
     }
@@ -1758,14 +2146,14 @@ function addComponent(element) {
     writeRelation(relations, ba, false);
     if (objectType == FObjectType.COMPONENT || objectType == FObjectType.LIST) {
         writeSegmentPos(ba, 4);
-        _loc16_ = controllerCache[element.pageController];
+        _loc16_ = controllerCache[getAttribute(element, "pageController")];
         if (_loc16_ != undefined) {
             ba.writeShort(_loc16_);
         }
         else {
             ba.writeShort(-1);
         }
-        _loc4_ = element.controller;
+        _loc4_ = getAttribute(element, "controller");
         if (_loc4_) {
             position = ba.position;
             ba.writeShort(0);
@@ -1798,7 +2186,7 @@ function addComponent(element) {
     writeSegmentPos(ba, 5);
     switch (objectType) {
         case FObjectType.IMAGE:
-            _loc4_ = element.color;
+            _loc4_ = getAttribute(element, "color");
             if (_loc4_) {
                 ba.writeBoolean(true);
                 writeColorData(ba, _loc4_, false);
@@ -1806,7 +2194,7 @@ function addComponent(element) {
             else {
                 ba.writeBoolean(false);
             }
-            _loc4_ = element.flip;
+            _loc4_ = getAttribute(element, "flip");
             switch (_loc4_) {
                 case "both":
                     ba.writeByte(3);
@@ -1820,7 +2208,7 @@ function addComponent(element) {
                 default:
                     ba.writeByte(0);
             }
-            _loc4_ = element.fillMethod;
+            _loc4_ = getAttribute(element, "fillMethod");
             writeFillMethodData(ba, _loc4_);
             if (_loc4_ && _loc4_ != "none") {
                 ba.writeByte(getAttributeInt(element, "fillOrigin"));
@@ -2225,6 +2613,7 @@ function addComponent(element) {
                         ba.writeByte(13);
                         position = ba.position;
                         ba.writeShort(0);
+                        debugger;
                         idx = 0;
                         while (_loc28_.moveNext()) {
                             idx++;
@@ -2297,6 +2686,7 @@ function addComponent(element) {
         case FObjectType.LIST:
             _loc4_ = getAttribute(element, "selectionController");
             if (_loc4_) {
+                console.log("controllerCache:", controllerCache);
                 _loc16_ = controllerCache[_loc4_];
                 if (_loc16_ != undefined) {
                     ba.writeShort(_loc16_);
@@ -2318,57 +2708,62 @@ function addComponent(element) {
         }
         writeSegmentPos(ba, 8);
         writeString(ba, getAttribute(element, "defaultItem"));
+        let autoClearItems = getAttributeBool(element, "autoClearItems");
         let items = element.item;
-        let itemLen = items.length;
         idx = 0;
         helperIntList.length = idx;
-        while (idx < itemLen) {
-            let item = items[idx];
-            _loc29_ = getAttributeInt(item, "level", 0);
-            helperIntList[idx] = _loc29_;
-            idx++;
+        if (items) {
+            for (let item of items) {
+                if (item) {
+                    _loc29_ = getAttributeInt(item, "level", 0);
+                    helperIntList[idx] = _loc29_;
+                    idx++;
+                }
+            }
         }
         _loc6_ = 0;
         ba.writeShort(idx);
-        let itemIdx = 0;
-        while (itemIdx < itemLen) {
-            let item = items[itemIdx];
-            tempByteBuffer = new ByteArray();
-            writeString(tempByteBuffer, getAttribute(item, "url"));
-            if (type == 17) {
-                _loc29_ = helperIntList[_loc6_];
-                if (_loc6_ != idx - 1 && helperIntList[_loc6_ + 1] > _loc29_) {
-                    tempByteBuffer.writeBoolean(true);
+        if (items && !autoClearItems) {
+            for (let item of items) {
+                if (item) {
+                    tempByteBuffer = new ByteArray();
+                    writeString(tempByteBuffer, getAttribute(item, "url"));
+                    if (type == 17) {
+                        _loc29_ = helperIntList[_loc6_];
+                        if (_loc6_ != idx - 1 && helperIntList[_loc6_ + 1] > _loc29_) {
+                            tempByteBuffer.writeBoolean(true);
+                        }
+                        else {
+                            tempByteBuffer.writeBoolean(false);
+                        }
+                        tempByteBuffer.writeByte(_loc29_);
+                    }
+                    writeString(tempByteBuffer, getAttribute(item, "title"), true);
+                    writeString(tempByteBuffer, getAttribute(item, "selectedTitle"), true);
+                    writeString(tempByteBuffer, getAttribute(item, "icon"));
+                    writeString(tempByteBuffer, getAttribute(item, "selectedIcon"));
+                    writeString(tempByteBuffer, getAttribute(item, "name"));
+                    _loc4_ = getAttribute(item, "controllers");
+                    if (_loc4_) {
+                        _loc5_ = _loc4_.split(",");
+                        tempByteBuffer.writeShort(_loc5_.length / 2);
+                        _loc6_ = 0;
+                        while (_loc6_ < _loc5_.length) {
+                            writeString(tempByteBuffer, _loc5_[_loc6_]);
+                            writeString(tempByteBuffer, _loc5_[_loc6_ + 1]);
+                            _loc6_ = _loc6_ + 2;
+                        }
+                    }
+                    else {
+                        tempByteBuffer.writeShort(0);
+                    }
+                    writeControllerItem(item, tempByteBuffer);
+                    ba.writeShort(tempByteBuffer.length);
+                    ba.writeBytes(tempByteBuffer);
+                    tempByteBuffer.clear();
+                    _loc6_++;
                 }
-                else {
-                    tempByteBuffer.writeBoolean(false);
-                }
-                tempByteBuffer.writeByte(_loc29_);
             }
-            writeString(tempByteBuffer, getAttribute(item, "title"), true);
-            writeString(tempByteBuffer, getAttribute(item, "selectedTitle"), true);
-            writeString(tempByteBuffer, getAttribute(item, "icon"));
-            writeString(tempByteBuffer, getAttribute(item, "selectedIcon"));
-            writeString(tempByteBuffer, getAttribute(item, "name"));
-            _loc4_ = getAttribute(item, "controllers");
-            if (_loc4_) {
-                _loc5_ = _loc4_.split(",");
-                tempByteBuffer.writeShort(_loc5_.length / 2);
-                _loc6_ = 0;
-                while (_loc6_ < _loc5_.length) {
-                    writeString(tempByteBuffer, _loc5_[_loc6_]);
-                    writeString(tempByteBuffer, _loc5_[_loc6_ + 1]);
-                    _loc6_ = _loc6_ + 2;
-                }
-            }
-            else {
-                tempByteBuffer.writeShort(0);
-            }
-            writeControllerItem(_loc14_, tempByteBuffer);
-            ba.writeShort(tempByteBuffer.length);
-            ba.writeBytes(tempByteBuffer);
-            tempByteBuffer.clear();
-            _loc6_++;
         }
     }
     if (type == 17) {
@@ -2388,7 +2783,7 @@ function writeGearData(gearType, gear) {
     var controllerDetails = [];
     var positionsInPercent = false;
     var condition = 0;
-    controller = gear.controller;
+    controller = getAttribute(gear, "controller");
     if (controller) {
         _loc9_ = controllerCache[controller];
         if (_loc9_ == undefined) {
@@ -2397,7 +2792,7 @@ function writeGearData(gearType, gear) {
         var ba = new ByteArray();
         ba.writeShort(_loc9_);
         if (gearType == 0 || gearType == 8) {
-            controller = gear.pages;
+            controller = getAttribute(gear, "pages");
             if (controller) {
                 strArr = controller.split(",");
                 strLength = strArr.length;
@@ -2416,14 +2811,14 @@ function writeGearData(gearType, gear) {
             }
         }
         else {
-            controller = gear.pages;
+            controller = getAttribute(gear, "pages");
             if (controller) {
                 controllerArr = controller.split(",");
             }
             else {
                 controllerArr = [];
             }
-            controller = gear.values;
+            controller = getAttribute(gear, "values");
             if (controller) {
                 controllerDetails = controller.split("|");
             }
@@ -2444,7 +2839,7 @@ function writeGearData(gearType, gear) {
                 }
                 idx++;
             }
-            controller = gear.default;
+            controller = getAttribute(gear, "default");
             if (controller) {
                 ba.writeBoolean(true);
                 writeGearValue(gearType, controller, ba);
@@ -2455,7 +2850,7 @@ function writeGearData(gearType, gear) {
         }
         if (getAttributeBool(gear, "tween")) {
             ba.writeBoolean(true);
-            ba.writeByte(EaseType.parseEaseType(gear.ease));
+            ba.writeByte(EaseType.parseEaseType(getAttribute(gear, "ease")));
             ba.writeFloat(getAttributeFloat(gear, "duration", 0.3));
             ba.writeFloat(getAttributeFloat(gear, "delay"));
         }
@@ -2477,7 +2872,7 @@ function writeGearData(gearType, gear) {
                     }
                     idx++;
                 }
-                controller = gear.default;
+                controller = getAttribute(gear, "default");
                 if (controller) {
                     ba.writeBoolean(true);
                     strArr = controller.split(",");
@@ -2550,6 +2945,122 @@ function writeGearValue(type, value, ba) {
         case 9:
             ba.writeInt(parseInt(value));
     }
+}
+function writeFontData(param1, param2) {
+    var tempByteBuffer;
+    var _loc7_ = 0;
+    var _loc8_ = {};
+    var xoffset = 0;
+    var yoffset = 0;
+    var width = 0;
+    var height = 0;
+    var xadvance = 0;
+    var chnl = 0;
+    var value;
+    var chars = [];
+    var _loc25_ = 0;
+    var _loc26_ = [];
+    var img = null;
+    var id = 0;
+    var ba = new ByteArray();
+    var _loc5_ = param2.split("\n");
+    var _loc6_ = _loc5_.length;
+    var _loc9_ = false;
+    var _loc10_ = false;
+    var _loc11_ = false;
+    var _loc12_ = false;
+    var _loc13_ = 0;
+    var _loc14_ = 0;
+    var _loc15_ = 0;
+    var _loc16_ = 0;
+    _loc7_ = 0;
+    for (; _loc7_ < _loc6_; _loc7_++) {
+        value = _loc5_[_loc7_];
+        if (value) {
+            value = value.trim();
+            chars = value.split(" ");
+            _loc8_ = {};
+            _loc25_ = 1;
+            while (_loc25_ < chars.length) {
+                _loc26_ = chars[_loc25_].split("=");
+                _loc8_[_loc26_[0]] = _loc26_[1];
+                _loc25_++;
+            }
+            value = chars[0];
+            if (value == "char") {
+                img = _loc8_["img"];
+                if (!_loc9_) {
+                    if (!img) {
+                        continue;
+                    }
+                }
+                id = +_loc8_["id"];
+                if (id != 0) {
+                    xoffset = +_loc8_["xoffset"];
+                    yoffset = +_loc8_["yoffset"];
+                    width = +_loc8_["width"];
+                    height = +_loc8_["height"];
+                    xadvance = +_loc8_["xadvance"];
+                    chnl = +_loc8_["chnl"];
+                    if (chnl != 0 && chnl != 15) {
+                        _loc12_ = true;
+                    }
+                    tempByteBuffer = new ByteArray();
+                    tempByteBuffer.writeShort(id);
+                    writeString(tempByteBuffer, img);
+                    tempByteBuffer.writeInt(+_loc8_["x"]);
+                    tempByteBuffer.writeInt(+_loc8_["y"]);
+                    tempByteBuffer.writeInt(xoffset);
+                    tempByteBuffer.writeInt(yoffset);
+                    tempByteBuffer.writeInt(width);
+                    tempByteBuffer.writeInt(height);
+                    tempByteBuffer.writeInt(xadvance);
+                    tempByteBuffer.writeByte(chnl);
+                    ba.writeShort(tempByteBuffer.length);
+                    ba.writeBytes(tempByteBuffer);
+                    tempByteBuffer.clear();
+                    _loc16_++;
+                }
+            }
+            else if (value == "info") {
+                _loc9_ = _loc8_.face != null;
+                _loc10_ = Boolean(_loc9_);
+                _loc13_ = +_loc8_.size;
+                _loc11_ = _loc8_.resizable == "true";
+                if (_loc8_.colored != undefined) {
+                    _loc10_ = _loc8_.colored == "true";
+                }
+            }
+            else if (value == "common") {
+                _loc14_ = +_loc8_.lineHeight;
+                _loc15_ = +_loc8_.xadvance;
+                if (_loc13_ == 0) {
+                    _loc13_ = _loc14_;
+                }
+                else if (_loc14_ == 0) {
+                    _loc14_ = _loc13_;
+                    continue;
+                }
+                continue;
+            }
+        }
+    }
+    tempByteBuffer = ba;
+    ba = new ByteArray();
+    startSegments(ba, 2, false);
+    writeSegmentPos(ba, 0);
+    ba.writeBoolean(_loc9_);
+    ba.writeBoolean(_loc10_);
+    ba.writeBoolean(_loc13_ > 0 ? Boolean(_loc11_) : false);
+    ba.writeBoolean(_loc12_);
+    ba.writeInt(_loc13_);
+    ba.writeInt(_loc15_);
+    ba.writeInt(_loc14_);
+    writeSegmentPos(ba, 1);
+    ba.writeInt(_loc16_);
+    ba.writeBytes(tempByteBuffer);
+    tempByteBuffer.clear();
+    return ba;
 }
 function writeColorData(ba, color, alpha = true, param4 = 4.27819008E9) {
     var _loc5_ = 0;
@@ -2641,6 +3152,60 @@ function writeTextSizeData(ba, type) {
             ba.writeByte(0);
     }
 }
+function writeTransitionTypeData(ba, type) {
+    switch (type) {
+        case "XY":
+            ba.writeByte(0);
+            break;
+        case "Size":
+            ba.writeByte(1);
+            break;
+        case "Scale":
+            ba.writeByte(2);
+            break;
+        case "Pivot":
+            ba.writeByte(3);
+            break;
+        case "Alpha":
+            ba.writeByte(4);
+            break;
+        case "Rotation":
+            ba.writeByte(5);
+            break;
+        case "Color":
+            ba.writeByte(6);
+            break;
+        case "Animation":
+            ba.writeByte(7);
+            break;
+        case "Visible":
+            ba.writeByte(8);
+            break;
+        case "Sound":
+            ba.writeByte(9);
+            break;
+        case "Transition":
+            ba.writeByte(10);
+            break;
+        case "Shake":
+            ba.writeByte(11);
+            break;
+        case "ColorFilter":
+            ba.writeByte(12);
+            break;
+        case "Skew":
+            ba.writeByte(13);
+            break;
+        case "Text":
+            ba.writeByte(14);
+            break;
+        case "Icon":
+            ba.writeByte(15);
+            break;
+        default:
+            ba.writeByte(16);
+    }
+}
 function writeGraphData(ba, type) {
     switch (type) {
         case "rect":
@@ -2658,6 +3223,199 @@ function writeGraphData(ba, type) {
             return 4;
         default:
             return 0;
+    }
+}
+function writeTransitionValue(param1, param2, param3) {
+    let item = decodeTransition(param2, param3);
+    encodeBinaryTransition(param2, param1, item);
+}
+function decodeTransition(type, value) {
+    var strArr;
+    let item = {};
+    switch (type) {
+        case "XY":
+        case "Size":
+        case "Pivot":
+        case "Skew":
+            strArr = value.split(",");
+            if (strArr[0] == "-") {
+                item.b1 = false;
+                item.f1 = 0;
+            }
+            else {
+                item.b1 = true;
+                item.f1 = parseFloat(strArr[0]);
+                if (isNaN(item.f1)) {
+                    item.f1 = 0;
+                }
+            }
+            if (strArr.length == 1 || strArr[1] == "-") {
+                item.b2 = false;
+                item.f2 = 0;
+            }
+            else {
+                item.b2 = true;
+                item.f2 = parseFloat(strArr[1]);
+                if (isNaN(item.f2)) {
+                    item.f2 = 0;
+                }
+            }
+            if (type == "XY") {
+                if (strArr.length > 2) {
+                    item.f3 = parseFloat(strArr[2]);
+                    item.f4 = parseFloat(strArr[3]);
+                    item.b3 = true;
+                }
+                else {
+                    item.b3 = false;
+                }
+            }
+            break;
+        case "Alpha":
+        case "Rotation":
+            item.f1 = parseFloat(value);
+            if (isNaN(item.f1)) {
+                item.f1 = 1;
+            }
+            break;
+        case "Scale":
+            strArr = value.split(",");
+            item.f1 = parseFloat(strArr[0]);
+            item.f2 = parseFloat(strArr[1]);
+            if (isNaN(item.f1)) {
+                item.f1 = 1;
+            }
+            if (isNaN(item.f2)) {
+                item.f2 = 1;
+            }
+            break;
+        case "Color":
+            item.iu = convertFromHtmlColor(value, false);
+            break;
+        case "Animation":
+            strArr = value.split(",");
+            if (strArr[0] == "-") {
+                item.b1 = false;
+            }
+            else {
+                item.i = parseInt(strArr[0]);
+                item.b1 = true;
+            }
+            item.b2 = strArr.length == 1 || strArr[1] == "p";
+            break;
+        case "Sound":
+            strArr = value.split(",");
+            item.s = strArr[0];
+            if (strArr.length > 1) {
+                item.i = parseInt(strArr[1]);
+            }
+            else {
+                item.i = 100;
+            }
+            break;
+        case "Transition":
+            strArr = value.split(",");
+            item.s = strArr[0];
+            if (strArr.length > 1) {
+                item.i = parseInt(strArr[1]);
+            }
+            else {
+                item.i = 1;
+            }
+            break;
+        case "Shake":
+            strArr = value.split(",");
+            item.f1 = parseFloat(strArr[0]);
+            item.f2 = parseFloat(strArr[1]);
+            if (isNaN(item.f2)) {
+                item.f2 = 0.3;
+            }
+            break;
+        case "Visible":
+            item.b1 = value == "true";
+            break;
+        case "ColorFilter":
+            strArr = value.split(",");
+            if (strArr.length >= 4) {
+                item.f1 = parseFloat(strArr[0]);
+                item.f2 = parseFloat(strArr[1]);
+                item.f3 = parseFloat(strArr[2]);
+                item.f4 = parseFloat(strArr[3]);
+            }
+            break;
+        case "Text":
+        case "Icon":
+            item.s = value;
+    }
+    return item;
+}
+function encodeBinaryTransition(type, ba, item) {
+    switch (type) {
+        case "XY":
+            ba.writeBoolean(item.b1);
+            ba.writeBoolean(item.b2);
+            if (item.b3) {
+                ba.writeFloat(item.f3);
+                ba.writeFloat(item.f4);
+            }
+            else {
+                ba.writeFloat(item.f1);
+                ba.writeFloat(item.f2);
+            }
+            ba.writeBoolean(item.b3);
+            break;
+        case "Size":
+        case "Pivot":
+        case "Skew":
+            ba.writeBoolean(item.b1);
+            ba.writeBoolean(item.b2);
+            ba.writeFloat(item.f1);
+            ba.writeFloat(item.f2);
+            break;
+        case "Alpha":
+        case "Rotation":
+            ba.writeFloat(item.f1);
+            break;
+        case "Scale":
+            ba.writeFloat(item.f1);
+            ba.writeFloat(item.f2);
+            break;
+        case "Color":
+            ba.writeByte(item.iu >> 16 & 255);
+            ba.writeByte(item.iu >> 8 & 255);
+            ba.writeByte(item.iu & 255);
+            ba.writeByte(255);
+            break;
+        case "Animation":
+            ba.writeBoolean(item.b2);
+            ba.writeInt(!!item.b1 ? Number(item.i) : -1);
+            break;
+        case "Sound":
+            writeString(ba, item.s, false, false);
+            ba.writeFloat(item.i / 100);
+            break;
+        case "Transition":
+            writeString(ba, item.s, false, false);
+            ba.writeInt(item.i);
+            break;
+        case "Shake":
+            ba.writeFloat(item.f1);
+            ba.writeFloat(item.f2);
+            break;
+        case "Visible":
+            ba.writeBoolean(item.b1);
+            break;
+        case "ColorFilter":
+            ba.writeFloat(item.f1);
+            ba.writeFloat(item.f2);
+            ba.writeFloat(item.f3);
+            ba.writeFloat(item.f4);
+            break;
+        case "Text":
+            writeString(ba, item.s, true);
+            break;
+        case "Icon":
+            writeString(ba, item.s);
     }
 }
 function startSegments(ba, segment, bool) {
@@ -2689,6 +3447,9 @@ function writeSegmentPos(ba, pos) {
 }
 function writeString(ba, str, param3 = false, param4 = true) {
     let value;
+    if (!str) {
+        debugger;
+    }
     if (param4) {
         if (!str) {
             ba.writeShort(65534);

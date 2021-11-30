@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "fast-xml-parser": "^3.21.1",
+    "jimp": "^0.16.1",
     "rollup": "^2.59.0"
   },
   "devDependencies": {
